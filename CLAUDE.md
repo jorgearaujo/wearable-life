@@ -4,6 +4,8 @@ A calm, cozy pixel-art mobile game where a character's world reflects the player
 
 The full product spec is in `docs/spec.md`. Read it before starting any feature, and treat it as the source of truth for game rules.
 
+`STATUS.md` says what is done, what is waiting and what is next. Read it at the start of a session and update it at the end.
+
 ## Current phase
 
 **Phase 0 — Discovery.** The framework is decided: **Flutter + Flame** (`docs/decisions/2026-11-11-framework.md`). Data discovery is still running: the Health Connect logger is collecting on a real phone.
