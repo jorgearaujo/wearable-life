@@ -12,3 +12,7 @@ local.properties
 
 # Raw health exports never go into git. Only anonymized extracts in fixtures/.
 spikes/**/data/raw/
+
+# Art reference images: other people's work, kept locally only
+docs/references/*
+!docs/references/notes.md
