@@ -11,6 +11,7 @@ uniform vec3 uTime;    // palette row A, palette row B, mix between them
 uniform float uDark;   // 0 by day, 1 at night: how strongly lights show
 uniform float uWaterY; // waterline in view pixels
 uniform float uStep;   // counts up 8 times a second; drives the water shimmer
+uniform float uWet;    // 0 clear, 1 rain or fog: pulls the colours down toward a cool grey
 uniform vec4 uLight0;  // x, y in view pixels, radius in art pixels, strength
 uniform vec4 uLight1;
 uniform sampler2D uScene;
@@ -60,6 +61,9 @@ void main() {
     vec4 s = texture(uScene, (src + 0.5) / uTexels);
     float index = floor(s.r * 255.0 / 4.0 + 0.5);
     vec3 c = now(index);
+    // Weather mutes the scene before the lights are added, so firelight stays warm in rain. Real art would use hand-picked wet palette rows instead.
+    float luma = dot(c, vec3(0.299, 0.587, 0.114));
+    c = mix(c, luma * vec3(0.78, 0.86, 0.96), 0.5 * uWet);
 
     float g = min(1.0, glow(uLight0, src) + glow(uLight1, src)) * uDark * step(0.5, s.g);
     c = mix(c, pal(index, LIT_ROW), g);

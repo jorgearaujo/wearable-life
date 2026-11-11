@@ -24,13 +24,20 @@ const fixedTime = int.fromEnvironment('FIXED_TIME', defaultValue: -1);
 final firePos = Vector2(166, bankY - 8);
 final windowPos = Vector2(83, bankY - 17); // the cabin window in ground.png
 
-/// Tap to step through these; "cycle" runs a whole day in [cycleSeconds].
-const holds = <(String, double)>[('cycle', -1), ('night', 0), ('dawn', 0.27), ('day', 0.5), ('dusk', 0.74)];
+/// Tap to step through these: (name, time of day, weather). "cycle" runs a whole day in [cycleSeconds].
+/// Weather: 0 clear, 1 rain, 2 fog. --dart-define=HOLD=5 starts on one of them.
+const holds = <(String, double, int)>[
+  ('cycle', -1, 0), ('night', 0, 0), ('dawn', 0.27, 0), ('day', 0.5, 0), ('dusk', 0.74, 0),
+  ('day rain', 0.5, 1), ('dusk rain', 0.74, 1), ('night rain', 0, 1), ('dawn fog', 0.27, 2), ('night fog', 0, 2),
+];
 
 /// Palette rows: 0 night, 1 dawn, 2 day, 3 dusk. Each key is (time of day, row); between keys the two
 /// rows are mixed, so day and night hold steady and dawn and dusk pass through.
 const paletteKeys = <(double, double)>[(0, 0), (0.2, 0), (0.27, 1), (0.36, 2), (0.64, 2), (0.74, 3), (0.82, 0), (1, 0)];
 const rowDarkness = [1.0, 0.5, 0.0, 0.6];
+// Fog and rain are ordinary colours, not palette indices, so they need their own colour per palette row.
+const fogColours = [Color(0xFF46598C), Color(0xFFFADCD7), Color(0xFFE1EBF0), Color(0xFFC896AA)];
+const rainColours = [Color(0xFF8CA0D2), Color(0xFFFFF0EB), Color(0xFFF0F5FA), Color(0xFFF0C8D2)];
 
 final hudText = ValueNotifier('...');
 
@@ -57,6 +64,7 @@ Future<void> main() async {
             width: fit.viewW * fit.scale / dpr,
             height: fit.viewH * fit.scale / dpr,
             child: Stack(
+              alignment: Alignment.topLeft, // the default needs a text direction, which nothing here provides
               children: [
                 GameWidget(game: SpikeGame(program, fit, palette)),
                 // Debug text sits outside the game: inside it, the shader would read it as palette indices.
@@ -104,7 +112,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
 
   final PixelFit fit;
   final ui.Image palette;
-  int hold = 0;
+  int hold = const int.fromEnvironment('HOLD');
 
   final ui.FragmentProgram program;
   late final GradePostProcess grade;
@@ -181,7 +189,15 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       ..rowA = rowA
       ..rowB = rowB
       ..mix = mix
-      ..dark = rowDarkness[rowA.toInt()] * (1 - mix) + rowDarkness[rowB.toInt()] * mix;
+      ..dark = rowDarkness[rowA.toInt()] * (1 - mix) + rowDarkness[rowB.toInt()] * mix
+      ..fogColour = Color.lerp(fogColours[rowA.toInt()], fogColours[rowB.toInt()], mix)!
+      ..rainColour = Color.lerp(rainColours[rowA.toInt()], rainColours[rowB.toInt()], mix)!
+      ..elapsed = elapsed
+      ..camX = camera.viewfinder.position.x;
+    // Weather fades in and out over about a second.
+    final weather = holds[hold].$3;
+    grade.rain = (grade.rain + (weather == 1 ? dt : -dt)).clamp(0.0, 1.0);
+    grade.fog = (grade.fog + (weather == 2 ? dt : -dt)).clamp(0.0, 1.0);
     // Flicker in steps, about 8 times a second, so the glow jumps like pixel art and does not pulse smoothly.
     final step = (elapsed * 8).floor();
     final flicker = 0.85 + 0.15 * sin(step * 12.9898).abs();
@@ -190,7 +206,8 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       ..step = step.toDouble()
       ..waterline = waterY - origin.y;
     grade.lights[0].setValues(firePos.x - origin.x, firePos.y - origin.y, 40 * flicker, 1);
-    grade.lights[1].setValues(windowPos.x - origin.x, windowPos.y - origin.y, 20, 0.67);
+    // The window is a flat lit shape with one thin ring around it; the dark scene does the rest.
+    grade.lights[1].setValues(windowPos.x - origin.x, windowPos.y - origin.y, 9, 0.34);
     if (sinceTouch > 3) {
       _pan(autoDir * 12 * dt);
     }
@@ -229,12 +246,21 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
 
 /// Renders the world once into a low-resolution image of palette indices, then draws it through the
 /// shader, which turns indices into colours for the time of day, adds the lights and mirrors the water.
+/// Rain and fog are then drawn on top as ordinary translucent shapes, in art pixels: the indexed scene
+/// cannot blend, but anything drawn after the shader can.
 class GradePostProcess extends PostProcess {
   GradePostProcess(ui.FragmentProgram program, this.palette) : shader = program.fragmentShader(), super(pixelRatio: 1);
 
   final ui.FragmentShader shader;
   final ui.Image palette;
   double rowA = 2, rowB = 2, mix = 0, dark = 0, waterline = 0, step = 0;
+  double rain = 0, fog = 0, elapsed = 0, camX = 0;
+  Color fogColour = fogColours[2], rainColour = rainColours[2];
+
+  // Fixed random sets: (x, y, speed) per rain streak and (x, y, width, drift) per fog wisp.
+  static final _rng = Random(7);
+  final _streaks = List.generate(70, (_) => (_rng.nextDouble(), _rng.nextDouble(), 150 + _rng.nextDouble() * 70));
+  final _wisps = List.generate(9, (_) => (_rng.nextDouble(), _rng.nextDouble(), 40 + _rng.nextDouble() * 50, 2 + _rng.nextDouble() * 4));
 
   /// x, y in view pixels, radius in art pixels, strength 0 to 1.
   final lights = [Vector4.zero(), Vector4.zero()];
@@ -243,7 +269,7 @@ class GradePostProcess extends PostProcess {
   void postProcess(Vector2 size, Canvas canvas) {
     final scene = rasterizeSubtree();
     var i = 0;
-    for (final v in [size.x, size.y, scene.width.toDouble(), scene.height.toDouble(), rowA, rowB, mix, dark, waterline, step]) {
+    for (final v in [size.x, size.y, scene.width.toDouble(), scene.height.toDouble(), rowA, rowB, mix, dark, waterline, step, max(rain, fog)]) {
       shader.setFloat(i++, v);
     }
     for (final l in lights) {
@@ -255,7 +281,42 @@ class GradePostProcess extends PostProcess {
       ..setImageSampler(0, scene)
       ..setImageSampler(1, palette);
     canvas.drawRect(Offset.zero & size.toSize(), Paint()..shader = shader);
+    if (rain > 0 || fog > 0) {
+      _weather(canvas, size, scene.width.toDouble(), scene.height.toDouble());
+    }
     scene.dispose();
+  }
+
+  void _weather(Canvas canvas, Vector2 size, double w, double h) {
+    canvas.save();
+    canvas.scale(size.x / w, size.y / h); // from here on, one unit is one art pixel
+    if (fog > 0) {
+      final paint = Paint()..isAntiAlias = false;
+      // A thin veil over everything, a thicker one low down, then drifting wisps that stack up.
+      canvas.drawRect(Rect.fromLTWH(0, 0, w, h), paint..color = fogColour.withValues(alpha: 0.16 * fog));
+      canvas.drawRect(Rect.fromLTWH(0, waterline - 70, w, 70 + h), paint..color = fogColour.withValues(alpha: 0.18 * fog));
+      paint.color = fogColour.withValues(alpha: 0.2 * fog);
+      for (final (x, y, width, drift) in _wisps) {
+        final span = w + width;
+        final left = ((x * span + elapsed * drift - camX * 0.8) % span - width).floorToDouble();
+        final top = (waterline - 78 + y * 84).floorToDouble();
+        canvas.drawRect(Rect.fromLTWH(left, top, width, 5), paint);
+        canvas.drawRect(Rect.fromLTWH(left + 6, top - 2, width - 16, 9), paint);
+      }
+    }
+    if (rain > 0) {
+      final paint = Paint()
+        ..isAntiAlias = false
+        ..color = rainColour.withValues(alpha: 0.38 * rain);
+      for (final (x, y, speed) in _streaks) {
+        // Fine slanted streaks: five pixels tall, one wide, stepping left once on the way down.
+        final py = ((y * (h + 8) + elapsed * speed) % (h + 8) - 8).floorToDouble();
+        final px = ((x * w - py * 0.25 - camX) % w).floorToDouble();
+        canvas.drawRect(Rect.fromLTWH(px, py, 1, 3), paint);
+        canvas.drawRect(Rect.fromLTWH(px - 1, py + 3, 1, 2), paint);
+      }
+    }
+    canvas.restore();
   }
 }
 

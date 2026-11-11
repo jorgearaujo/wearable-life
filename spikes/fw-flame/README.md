@@ -105,3 +105,33 @@ Limits found:
 3. The build warns that the `health` plugin applies the Kotlin Gradle plugin in a way future Flutter versions will reject. The plugin will need an update before a Flutter upgrade.
 4. The debug text uses the default smooth font, not a pixel font. A bitmap font would need its own setup.
 5. **Flame has no built-in integer scaling, and its fixed-resolution viewport stretches.** On any screen whose width or height is not a whole multiple of the scale, it stretched the picture by a fraction and some art pixels came out wider or taller than others. The fix (`PixelFit` in `lib/main.dart`, about 40 lines) puts the game in a box that is an exact whole multiple of the art size, centred on a physical pixel, leaving a border of at most a few pixels. Checked by measuring screenshots, not by eye.
+
+## Rain and fog on top of the indexed scene (2026-11-11)
+
+Question from the second pass: the indexed art cannot blend, so can weather be drawn as an ordinary translucent layer after the shader?
+
+**Yes.** After the shader has drawn the scene, the same post-process step scales the canvas to art pixels and draws plain translucent rectangles on top (`_weather` in `lib/main.dart`). No second render pass and no extra image.
+
+| Part | How | Result on the emulator |
+| --- | --- | --- |
+| Rain | 70 slanted streaks, 5 art pixels tall, 38% opaque, falling 150 to 220 art pixels a second | Fine streaks over sky, land and water, on the pixel grid |
+| Fog | A thin veil over everything, a thicker one near the water, 9 slow wisps that stack where they overlap | Trees and hills fade back; the character and cabin stay readable |
+| Muted colours | One shader input (`uWet`) pulls every scene colour toward a cool grey before the lights are added | Day, dusk and night all read as overcast; firelight stays warm |
+| Weather colour | Rain and fog are ordinary colours, so each has one colour per time of day, mixed like the palette rows | Blue fog at night, pink at dawn |
+| Fade | Weather fades in and out over about a second | Works |
+| Window light | Radius 20 to 9, strength 0.67 to 0.34: a flat lit shape with one thin ring, as in the references | Works |
+
+Tap now steps through: cycle, night, dawn, day, dusk, day rain, dusk rain, night rain, dawn fog, night fog. `--dart-define=HOLD=5` starts on one of them.
+
+**Limits found**
+
+- The sun and moon are painted into the sky art, so they still shine through the rain. Overcast needs the sun as its own piece, or cloudy sky rows.
+- The muting is one formula. The references pull each colour down by hand; real art would use wet palette rows (one more row per time of day).
+- Fog is drawn over the lights, so it dulls the campfire glow. Drawing lights after fog would need the glow moved out of the shader or the fog moved into it.
+- Fog wisps are stacked rectangles and look like bands. Drawn fog sprites would use the same layer.
+- The campfire's own flame colours are muted with the scene.
+- Rain does not splash or change the water.
+
+**Cost on the Pixel 7a:** not yet measured for rain and fog; the build is installed.
+
+**Bug fixed on the way:** the `Stack` holding the debug text needed an explicit alignment; without one the first frame threw on a fresh start and the screen stayed blank.
