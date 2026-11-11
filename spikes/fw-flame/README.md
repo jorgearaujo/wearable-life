@@ -235,3 +235,21 @@ Limits:
 - The squirrel does not avoid the fire or the dog, and has no shadow.
 - Phone cost on the Pixel 7a: 60 fps, worst frame 17 ms, the same as before the stars, the animals and the extra texture read.
 - The dithered band edges are not settled: the project owner is unsure about them. The sky is left as it is in this spike; how the real sky is painted (band shapes, clouds as their own pieces) is an art decision for when art direction starts.
+
+## Interactions: petting the dog and skipping stones (2026-11-11)
+
+Question: do touch, walking and small animations work at this pixel size, and can a toy be thrown onto the mirrored water?
+
+- **The character acts, the player points.** A tap on the dog or on the water is a request. The character walks there first (30 art px a second), then does it. A new tap replaces the request in progress.
+- **Petting.** Tap the dog: the character walks round to its head, turns to face it and moves a hand over its head for about two seconds, and the dog's tail wags. The dog is now its own two-frame sprite (it used to be painted into the ground).
+- **Skipping stones.** Tap the water: the character walks to a spot one throw away from the tapped point, crouches to pick a stone, winds up and throws. The stone lands where the tap was, then skips four more times, each hop shorter and lower, with a small ring at every touch. Stone and rings use the same "floats on the water" flag as the duck, so they show in place of the reflection.
+- **Character sheet.** 11 frames of 24×30 (idle 2, walk 4, pet 2, pick up, wind-up, throw), each also stored mirrored, so the game never flips a sprite. Which way it faces reads from the hat brim, the scarf tail and the hand; no drawn eyes.
+- **Camera.** While the character is doing something the view follows it; a tap also holds the slow drift for three seconds. The speech bubble's tail now follows the character.
+- **The meters are not touched.** Neither toy reads or changes Sleep, Energy or Activity (rule 3).
+
+Seen on the emulator: both work end to end. Limits and things real art must solve:
+
+- The character walks *through* the dog to reach its head, drawn in front of it. Real art needs a rule (dog stands up and turns, or the character always approaches from the head side).
+- The stone is 2×1 px and the rings 2 px dashes. They are readable but small; a splash frame would help.
+- The tap target for the dog is its 24×19 px box, about 1 cm on the phone. Fine for one dog; closer objects will need priorities.
+- Tap order is now: meters, moon, cabin, fire, dog, water, and anything else steps the time of day.

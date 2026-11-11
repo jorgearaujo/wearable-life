@@ -150,6 +150,8 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
   int moonPhase = 4; // 0 new, 2 first quarter, 4 full, 6 last quarter
   late final List<Sprite> flowerFrames;
   late final Hud hud;
+  late final Hero hero;
+  late final Stones stones;
 
   /// 0 dormant (under a tarp), 1 open, 2 flourishing (flowers open). Tap the cabin to step through.
   int cabin = 1;
@@ -199,16 +201,12 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     flowers = SpriteComponent(sprite: flowerFrames[0], position: Vector2(38, bankY - 7));
     tarp = SpriteComponent(sprite: await loadSprite('tarp.png'), position: Vector2(40, bankY - 53))..opacity = 0;
     world.addAll([tarp, flowers]);
-    world.add(
-      SpriteAnimationComponent.fromFrameData(
-        await images.load('character.png'),
-        SpriteAnimationData.sequenced(amount: 4, stepTime: 0.25, textureSize: Vector2(16, 30)),
-        position: Vector2(112, bankY),
-        anchor: Anchor.bottomCenter,
-      ),
-    );
+    hero = Hero(this, await images.load('character.png'));
+    stones = Stones(this);
+    world.addAll([Dog(this, await images.load('dog.png')), hero]);
     world.add(Props(this));
     world.add(Wildlife(this, await images.load('duck.png'), await images.load('squirrel.png')));
+    world.add(stones);
 
     camera = CameraComponent.withFixedResolution(width: viewW, height: viewH, world: world);
     camera.viewfinder.anchor = Anchor.topLeft;
@@ -227,6 +225,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
 
   @override
   void onTapDown(TapDownInfo info) {
+    sinceTouch = 0; // a tap holds the view still for a moment, like a drag does
     // canvasSize is the widget on screen; `size` is the camera's view in art pixels.
     final scale = canvasSize.x / viewW;
     final vx = info.eventPosition.widget.x / scale, vy = info.eventPosition.widget.y / scale;
@@ -246,6 +245,18 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     } else if ((wx - firePos.x).abs() < 14 && wy > bankY - 24 && wy < bankY + 6) {
       fireLit = !fireLit;
       hud.say(fireReasons[fireLit ? 1 : 0]);
+    } else if (wx > dogX && wx < dogX + 24 && wy > bankY - 19 && wy < bankY) {
+      // Pet the dog: the character walks round to its head first. A toy; no meter changes.
+      hero.go(dogX + 28, Act.pet);
+    } else if (wy > waterY + 3) {
+      // Skip a stone to where the water was tapped: walk to a spot a throw away, pick one up, throw.
+      final dir = wx >= hero.x ? 1.0 : -1.0;
+      hero.aim = Vector2(wx.clamp(6.0, worldW - 6), wy.floorToDouble());
+      hero.aimDir = dir;
+      var spot = (hero.aim.x - dir * 34).clamp(10.0, worldW - 10);
+      // Not on top of the dog: stand just beside it instead.
+      if (spot > dogX - 10 && spot < dogX + 34) spot = spot < dogX + 12 ? dogX - 10 : dogX + 34;
+      hero.go(spot, Act.pick);
     } else {
       hold = (hold + 1) % holds.length;
     }
@@ -259,7 +270,11 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     sinceTouch += dt;
     // Move the camera first: everything below is placed relative to it. Placed before the move, the sun,
     // the moon and the lights sat one pixel off for a frame at every camera step, which looked like shaking.
-    if (sinceTouch > 3) {
+    if (hero.busy) {
+      // While the character is doing something, the camera follows it instead of drifting.
+      sinceTouch = 0;
+      _pan((hero.x - viewW / 2 - camLeft).clamp(-40 * dt, 40 * dt));
+    } else if (sinceTouch > 3) {
       _pan(autoDir * 12 * dt);
     }
     final held = holds[hold].$2;
@@ -312,7 +327,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       hudText.value =
           '${fps.round()} fps  worst ${worstMs.round()} ms\n'
           'view ${viewW.round()}x${fit.viewH.round()}  ${holds[hold].$1}\n'
-          'tap: a meter, the cabin, the fire, the moon, or elsewhere';
+          'tap: the dog, the water, a meter, the cabin,\nthe fire, the moon, or the sky';
       worstMs = 0;
     }
   }
@@ -594,6 +609,173 @@ class Wildlife extends Component {
   }
 }
 
+const dogX = 125.0; // left edge of the dog's sprite
+
+enum Act { idle, walk, pet, pick, wind, release }
+
+/// The character. It always shows the action it is doing: it walks to where the action happens first.
+/// Positions are kept as fractions and drawn on whole pixels.
+class Hero extends Component {
+  Hero(this.game, this.sheet);
+
+  final SpikeGame game;
+  final ui.Image sheet;
+  final _paint = Paint()
+    ..filterQuality = FilterQuality.none
+    ..isAntiAlias = false;
+
+  double x = 112, target = 112, t = 0, aimDir = 1;
+  bool left = false;
+  Act act = Act.idle, next = Act.idle;
+  Vector2 aim = Vector2.zero();
+
+  bool get busy => act != Act.idle;
+
+  /// Walk to [to], then do [then]. A new request replaces the one in progress.
+  void go(double to, Act then) {
+    target = to;
+    next = then;
+    act = Act.walk;
+  }
+
+  void _begin(Act a) {
+    act = a;
+    t = 0;
+    if (a == Act.pet) left = true; // the dog faces right; its head is to the character's left
+    if (a == Act.pick) left = aimDir < 0;
+  }
+
+  @override
+  void update(double dt) {
+    t += dt;
+    switch (act) {
+      case Act.idle:
+        break;
+      case Act.walk:
+        final d = target - x;
+        if (d.abs() < 0.5) {
+          x = target;
+          _begin(next);
+        } else {
+          left = d < 0;
+          x += d.sign * min(d.abs(), 30 * dt);
+        }
+      case Act.pet:
+        if (t > 2.4) _begin(Act.idle);
+      case Act.pick:
+        if (t > 0.45) _begin(Act.wind);
+      case Act.wind:
+        if (t > 0.25) {
+          _begin(Act.release);
+          game.stones.throwFrom(Vector2(x.floorToDouble() + aimDir * 10, bankY - 16), aim, aimDir);
+        }
+      case Act.release:
+        if (t > 0.4) _begin(Act.idle);
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final frame = switch (act) {
+      Act.idle => (game.elapsed * 2).floor() % 2,
+      Act.walk => 2 + (x / 3).floor() % 4,
+      Act.pet => 6 + (t * 5).floor() % 2,
+      Act.pick => 8,
+      Act.wind => 9,
+      Act.release => 10,
+    };
+    canvas.drawImageRect(
+      sheet,
+      Rect.fromLTWH(frame * 24.0, left ? 30 : 0, 24, 30),
+      Rect.fromLTWH(x.floorToDouble() - 12, bankY - 30, 24, 30),
+      _paint,
+    );
+  }
+}
+
+/// The dog sits where it sat in the ground art, and wags its tail while it is being petted.
+class Dog extends Component {
+  Dog(this.game, this.sheet);
+
+  final SpikeGame game;
+  final ui.Image sheet;
+  final _paint = Paint()
+    ..filterQuality = FilterQuality.none
+    ..isAntiAlias = false;
+
+  @override
+  void render(Canvas canvas) {
+    final wag = game.hero.act == Act.pet && (game.elapsed * 6).floor().isOdd;
+    canvas.drawImageRect(sheet, Rect.fromLTWH(wag ? 24 : 0, 0, 24, 17), const Rect.fromLTWH(dogX, bankY - 17, 24, 17), _paint);
+  }
+}
+
+/// Skipping stones: a stone flies from the hand to the tapped spot on the water, skips a few times in
+/// shorter and lower hops, and leaves a ring at every touch. Stone and rings below the waterline carry
+/// the "afloat" flag (blue), like the duck, so the shader shows them instead of the reflection.
+class Stones extends Component {
+  Stones(this.game);
+
+  final SpikeGame game;
+  static Paint _flag(int index, bool afloat) => Paint()
+    ..color = Color.fromARGB(255, index * 4, 0, afloat ? 255 : 0)
+    ..isAntiAlias = false;
+  final _stone = _flag(34, false), _wet = _flag(34, true), _ring = _flag(63, true);
+
+  // Each hop: from, to, height, duration. One stone at a time is enough for a toy.
+  final _hops = <(Vector2, Vector2, double, double)>[];
+  final _rings = <(double, double, double)>[]; // x, y, time it appeared
+  int hop = 0;
+  double t = 0;
+
+  void throwFrom(Vector2 hand, Vector2 touch, double dir) {
+    _hops
+      ..clear()
+      ..add((hand, touch, 9, 0.5));
+    var from = touch;
+    for (final (length, height, time) in [(14.0, 5.0, 0.3), (9.0, 3.0, 0.22), (5.0, 2.0, 0.16), (3.0, 1.0, 0.12)]) {
+      final to = Vector2((from.x + dir * length).clamp(1.0, worldW - 2), from.y);
+      _hops.add((from, to, height, time));
+      from = to;
+    }
+    hop = 0;
+    t = 0;
+  }
+
+  @override
+  void update(double dt) {
+    _rings.removeWhere((r) => game.elapsed - r.$3 > 0.6);
+    if (hop >= _hops.length) return;
+    t += dt;
+    while (hop < _hops.length && t >= _hops[hop].$4) {
+      t -= _hops[hop].$4;
+      final at = _hops[hop].$2;
+      _rings.add((at.x, at.y, game.elapsed));
+      hop++;
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    for (final (x, y, born) in _rings) {
+      final age = game.elapsed - born;
+      if (age < 0.12) {
+        canvas.drawRect(Rect.fromLTWH(x - 1, y, 3, 1), _ring);
+      } else {
+        final r = age < 0.3 ? 3.0 : 5.0;
+        canvas.drawRect(Rect.fromLTWH(x - r - 1, y, 2, 1), _ring);
+        canvas.drawRect(Rect.fromLTWH(x + r, y, 2, 1), _ring);
+      }
+    }
+    if (hop >= _hops.length) return;
+    final (from, to, height, time) = _hops[hop];
+    final s = t / time;
+    final x = (from.x + (to.x - from.x) * s).floorToDouble();
+    final y = (from.y + (to.y - from.y) * s - height * 4 * s * (1 - s)).floorToDouble();
+    canvas.drawRect(Rect.fromLTWH(x, y, 2, 1), y >= waterY ? _wet : _stone);
+  }
+}
+
 class Props extends Component {
   Props(this.game);
 
@@ -690,7 +872,7 @@ class Hud extends Component {
   void _bubble(Canvas canvas) {
     final origin = game.camera.viewfinder.position;
     final w = lines.map(_width).fold(0, max) + 8.0, h = lines.length * pitch + 5;
-    final tail = (112 - origin.x).clamp(8.0, game.viewW - 8);
+    final tail = (game.hero.x.floorToDouble() - origin.x).clamp(8.0, game.viewW - 8);
     final x = (tail - w / 2).floorToDouble().clamp(2.0, game.viewW - 2 - w);
     final y = bankY - 36 - origin.y - h;
     void box(double inset, Color colour) {

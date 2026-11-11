@@ -255,7 +255,7 @@ while x < W:
     x += random.randint(15, 24)
 save(trees, "trees")
 
-# The bank, a cabin and a dog. Everything below the waterline is replaced by the reflection.
+# The bank and a cabin (the dog is its own sprite, further down). Everything below the waterline is replaced by the reflection.
 ground, d = layer()
 d.rectangle([0, BANK, W, H], fill=c("bank"))
 d.rectangle([0, BANK, W, BANK + 1], fill=c("bank_top"))
@@ -270,14 +270,6 @@ d.polygon([(44, BANK - 30), (73, BANK - 50), (102, BANK - 30)], fill=c("roof"))
 d.rectangle([58, BANK - 18, 67, BANK - 1], fill=c("door"))
 d.rectangle([78, BANK - 22, 88, BANK - 13], fill=c("window", light=False))
 d.line([83, BANK - 22, 83, BANK - 13], fill=c("wall_shade"))
-dx, dy = 128, BANK - 17  # a large dog, sitting
-d.rectangle([dx, dy + 6, dx + 12, dy + 16], fill=c("dog"))
-d.rectangle([dx + 8, dy, dx + 16, dy + 8], fill=c("dog"))
-d.rectangle([dx + 15, dy + 4, dx + 19, dy + 7], fill=c("dog"))
-d.rectangle([dx + 8, dy, dx + 10, dy + 6], fill=c("dog_shade"))
-d.rectangle([dx - 3, dy + 13, dx, dy + 15], fill=c("dog_shade"))
-d.rectangle([dx, dy + 12, dx + 4, dy + 16], fill=c("dog_shade"))
-d.point([dx + 14, dy + 3], fill=c("door"))
 save(ground, "ground")
 
 # Dormant and flourishing pieces, drawn over the same cabin and bank. World position is in main.dart.
@@ -366,18 +358,73 @@ for i, (top, rows) in enumerate(GLYPHS.values()):
 save(ui, "ui")
 print("font order:", "".join(GLYPHS))
 
-# Character: 4 frames of 16x30, a small idle bob. A hat and a scarf carry the identity; no drawn eyes.
-sheet = Image.new("RGBA", (64, 30), (0, 0, 0, 0))
+# Character: frames of 24x30 facing right, with the same frames mirrored in a second row.
+# A hat brim, a scarf tail and a hand show which way it faces; no drawn eyes.
+#   0-1 idle, 2-5 walk, 6-7 petting (arm out, hand moving), 8 picking something up, 9 wind-up, 10 throw
+def person(d, ox, bob=0, legs="stand", arm="down", crouch=0):
+    top = bob + crouch
+    d.rectangle([ox + 8, 1 + top, ox + 15, 3 + top], fill=c("hat"))
+    d.rectangle([ox + 8, 4 + top, ox + 17, 4 + top], fill=c("hat"))
+    d.rectangle([ox + 9, 5 + top, ox + 14, 9 + top], fill=c("skin"))
+    d.rectangle([ox + 8, 10 + top, ox + 15, 11 + top], fill=c("scarf"))
+    d.rectangle([ox + 7, 12 + top, ox + 16, 21 + crouch], fill=c("coat"))
+    d.rectangle([ox + 6, 11 + top, ox + 6, 15 + top], fill=c("scarf"))
+    for a, b in {"stand": [(9, 11), (13, 15)], "stride": [(7, 9), (15, 17)], "pass": [(10, 12), (12, 14)],
+                 "stride2": [(8, 10), (14, 16)]}[legs]:
+        d.rectangle([ox + a, 22 + crouch, ox + b, 29], fill=c("legs"))
+    if arm == "down":
+        d.rectangle([ox + 15, 20 + top, ox + 16, 21 + top], fill=c("skin"))
+    elif arm in ("pet_up", "pet_down"):
+        h = -1 if arm == "pet_up" else 0
+        d.rectangle([ox + 15, 12 + h, ox + 19, 13 + h], fill=c("coat"))
+        d.rectangle([ox + 20, 12 + h, ox + 21, 13 + h], fill=c("skin"))
+    elif arm == "pick":
+        d.rectangle([ox + 17, 17 + top, ox + 18, 22 + top], fill=c("coat"))
+        d.rectangle([ox + 17, 23 + top, ox + 18, 24 + top], fill=c("skin"))
+    elif arm == "back":
+        d.rectangle([ox + 3, 10 + top, ox + 7, 11 + top], fill=c("coat"))
+        d.rectangle([ox + 2, 8 + top, ox + 3, 9 + top], fill=c("skin"))
+    elif arm == "throw":
+        d.rectangle([ox + 15, 14 + top, ox + 20, 15 + top], fill=c("coat"))
+        d.rectangle([ox + 21, 14 + top, ox + 22, 15 + top], fill=c("skin"))
+
+
+POSES = [
+    dict(), dict(bob=1),
+    dict(legs="stride", bob=1), dict(legs="pass"), dict(legs="stride2", bob=1), dict(legs="pass"),
+    dict(arm="pet_up"), dict(arm="pet_down"),
+    dict(arm="pick", crouch=5), dict(arm="back", legs="stride2"), dict(arm="throw", legs="stride", bob=1),
+]
+
+
+def both_ways(sheet, width, height, count):
+    """Adds a second row with every frame mirrored, so the game never flips a sprite onto half pixels."""
+    for f in range(count):
+        frame = sheet.crop((f * width, 0, (f + 1) * width, height)).transpose(Image.FLIP_LEFT_RIGHT)
+        sheet.paste(frame, (f * width, height))
+
+
+sheet = Image.new("RGBA", (24 * len(POSES), 60), (0, 0, 0, 0))
 d = ImageDraw.Draw(sheet)
-for f, bob in enumerate([0, 1, 1, 0]):
-    ox = f * 16
-    d.rectangle([ox + 4, 1 + bob, ox + 11, 3 + bob], fill=c("hat"))
-    d.rectangle([ox + 3, 4 + bob, ox + 12, 4 + bob], fill=c("hat"))
-    d.rectangle([ox + 5, 5 + bob, ox + 10, 9 + bob], fill=c("skin"))
-    d.rectangle([ox + 4, 10 + bob, ox + 11, 11 + bob], fill=c("scarf"))
-    d.rectangle([ox + 3, 12 + bob, ox + 12, 21], fill=c("coat"))
-    d.rectangle([ox + 3, 12 + bob, ox + 4, 19], fill=c("scarf") if f == 3 else c("coat"))
-    d.rectangle([ox + 5, 22, ox + 7, 29], fill=c("legs"))
-    d.rectangle([ox + 9, 22, ox + 11, 29], fill=c("legs"))
+for f, pose in enumerate(POSES):
+    person(d, f * 24, **pose)
+both_ways(sheet, 24, 30, len(POSES))
 save(sheet, "character")
+
+# The dog, sitting, facing right: tail down and tail up, for wagging. 24x17 a frame.
+sheet = Image.new("RGBA", (48, 17), (0, 0, 0, 0))
+d = ImageDraw.Draw(sheet)
+for f in range(2):
+    dx, dy = f * 24 + 3, 0
+    d.rectangle([dx, dy + 6, dx + 12, dy + 16], fill=c("dog"))
+    d.rectangle([dx + 8, dy, dx + 16, dy + 8], fill=c("dog"))
+    d.rectangle([dx + 15, dy + 4, dx + 19, dy + 7], fill=c("dog"))
+    d.rectangle([dx + 8, dy, dx + 10, dy + 6], fill=c("dog_shade"))
+    d.rectangle([dx, dy + 12, dx + 4, dy + 16], fill=c("dog_shade"))
+    d.point([dx + 14, dy + 3], fill=c("door"))
+    if f == 0:
+        d.rectangle([dx - 3, dy + 13, dx, dy + 15], fill=c("dog_shade"))
+    else:
+        d.rectangle([dx - 2, dy + 8, dx - 1, dy + 13], fill=c("dog_shade"))
+save(sheet, "dog")
 print(f"{len(NAMES)} palette entries")
