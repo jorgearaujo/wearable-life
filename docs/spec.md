@@ -293,6 +293,7 @@ A points shop may be added later.
 All health data stays on the device, read from Health Connect or HealthKit. The app makes no medical claims. Health data is special-category data under GDPR, and Google Play's health app declaration applies.
 
 - **Permissions are asked for in stages:** steps and sleep first; heart rate, resting heart rate, HRV and breathing rate later, each with a written reason. SpO2 only if a visible feature needs it. Skin temperature is not requested.
+- **What the game stores is encrypted by the app** (decided 2026-11-11, `docs/decisions/2026-11-11-encryption-at-rest.md`): one small file in the app's private storage, with a key held in the phone's secure key store, kept out of backups. It holds reduced daily figures, baselines, meter results and the world state, never raw records. The Android app ships without the internet permission.
 - **Store requirements:** a privacy policy at a public address, reachable from the permission screen, and a statement in the store text that the app is not a medical device. Neither sends health data anywhere.
 
 ## Open items
@@ -301,6 +302,7 @@ All health data stays on the device, read from Health Connect or HealthKit. The 
 - [ ] Data discovery: which data types each major wearable writes to Health Connect and HealthKit, and when (Phase 0)
 - [x] Name for the weekly score: Mood score
 - [x] Weekly goals: set by an admin, not by the player, and shipped inside the app (decided 2026-11-11). The goals themselves, and how they rotate from week to week, are still to be designed (deferred by the project owner, 2026-11-11). First ideas: a minimum Sleep level, reaching a step count, filling the Activity meter. Each has to be worded without internal numbers and must not depend on hidden values.
+- [ ] Progress when a player changes phones: lose it, back up progress only, or a manual transfer (`docs/decisions/2026-11-11-encryption-at-rest.md`)
 - [ ] Final visual style after exploring design ideas
 - [ ] Character design: original concept based on the qualities in Visual direction
 - [ ] Rendering approach: flat 2D layers (Cast n Chill) or pixel art in a 3D setting (Neko Odyssey); affects the framework choice

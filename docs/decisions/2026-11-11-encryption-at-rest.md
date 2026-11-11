@@ -1,9 +1,9 @@
 # Encryption at rest for what the game stores
 
 - **Date:** 2026-11-11
-- **Status:** **proposed, not decided.** This touches health data storage, so the project owner decides. Nothing is built; the real app does not exist yet.
+- **Status:** **option B decided** by the project owner on 2026-11-11. Still open: what happens to progress when a player changes phones (question 2 below). Nothing is built; the real app does not exist yet.
 - **Question:** Google Play asks Health Connect apps to encrypt health data at rest and in transit. What does the game store, and how should it be protected?
-- **Recommendation:** store as little as possible, in one small file in the app's private storage, encrypted by the app with a key held in the phone's secure key store, and kept out of backups. This needs no new dependency. Ship the Android app without the internet permission, so "nothing in transit" can be checked by anyone.
+- **Decision:** store as little as possible, in one small file in the app's private storage, encrypted by the app with a key held in the phone's secure key store, and kept out of backups. This needs no new dependency. Ship the Android app without the internet permission, so "nothing in transit" can be checked by anyone.
 - **Evidence:** store research in `docs/findings/2026-11-11-wearable-apps-and-store-rules.md`; data sizes in `docs/findings/2026-11-11-health-connect-data.md`; a web check on 2026-11-11 that the AndroidX security-crypto library is deprecated. Platform behaviour below is from documentation and general knowledge, not tested in this project.
 
 ## What would be stored
@@ -28,7 +28,7 @@ Not stored: raw heart rate samples, sleep stage lists, anything from a third par
 | **B. A plus the app encrypts its own file.** Authenticated encryption (AES-GCM) with a key created in the Android Keystore or iOS Keychain; the key never leaves the phone's secure hardware. | As A, plus a copied file is unreadable anywhere else. | A small piece of code in our own native bridge on each platform, using only what the platforms ship. No new dependency. The file is read and written whole, which suits a store this small. |
 | **C. An encrypted database library** (SQLCipher or similar, through a Flutter plugin). | As B. | A new dependency with native code, a larger build, licence terms to check. Worth it only for a large or heavily queried store, which this is not. |
 
-**Recommended: B.** It gives a plain answer to Play's requirement, keeps rule 6 strict, adds no dependency, and fits the decision to own the health bridge. The AndroidX library that used to wrap this is deprecated, so writing against the platform key store directly is also the current advice.
+**Decided: B.** It gives a plain answer to Play's requirement, keeps rule 6 strict, adds no dependency, and fits the decision to own the health bridge. The AndroidX library that used to wrap this is deprecated, so writing against the platform key store directly is also the current advice.
 
 ## Details that come with B
 
@@ -42,7 +42,7 @@ Not stored: raw heart rate samples, sleep stage lists, anything from a third par
 
 ## Open questions for the project owner
 
-1. **Approve B?** Or A only, accepting the risk that Play asks for more.
+1. ~~Approve B?~~ **Approved, 2026-11-11.**
 2. **Progress when changing phones.** The level and world are game progress, but they are derived from health data. Three choices:
    - *Lose them* on a new phone: simplest and strictest; hard on a long-time player, and at odds with the spirit of rule 1.
    - *Back up progress only* (level, unlocked items, world state; no health figures, no baselines): keeps the player's world. It puts a health-derived summary in the player's own cloud backup, which needs a line in the privacy policy and a view on Apple's iCloud rule.
