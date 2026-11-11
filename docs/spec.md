@@ -116,7 +116,7 @@ The game uses many internal numbers to make decisions, but every visible change 
 - **Hidden inputs may shape the day:** HRV, resting heart rate and breathing rate can set morning Energy, adjust the Activity target, or trigger rest mode. Players experience this as "my body is tired today", which feels fair.
 - **Hidden inputs never grade the player:** metrics the player doesn't directly control never lower the Mood score, the weather or level progress.
 - **The numbers are hidden, the use is not:** the permission screen, onboarding and the privacy policy say in plain words which data shapes Energy and the day. Only the internal numbers stay out of sight.
-- **Tap for the reason:** tapping a meter gives a plain-language cause without showing the number. Example: "Energy starts lower today: your resting heart rate is higher than usual."
+- **Tap for the reason:** tapping a meter gives a plain-language cause without showing the number. Example: "Energy starts lower today: your resting heart rate is higher than usual." A reason is at most about 75 letters in English, which is four lines in the speech bubble (decided 2026-11-11; `spikes/fw-flame/README.md`).
 
 ## Mood score, level and rest mode
 

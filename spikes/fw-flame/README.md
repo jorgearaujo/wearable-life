@@ -200,7 +200,7 @@ Palette entries: 45, up from 36.
 | Energy starts lower today: your resting heart rate is higher than usual. | 72 | 4 |
 
 - A four-line bubble is 45 art pixels tall, about a sixth of the screen height, and covers the treeline above the character. Two lines (25 pixels) sits comfortably.
-- **Suggested rule for writing reasons:** aim for 50 letters or fewer, never more than about 75. Not yet in the spec.
+- **Rule for writing reasons (decided by the project owner, 2026-11-11, in `docs/spec.md`):** at most about 75 letters. A 50-letter target was judged too short. The font was read on the Pixel 7a and judged good.
 
 Limits:
 
