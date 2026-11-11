@@ -104,7 +104,7 @@ Pokémon Sleep reads sleep through Health Connect. Zywo: Workout Monster RPG rea
 
 ## 3. Points where the spec and the rules meet
 
-**Decided by the project owner on 2026-11-11 and applied to `docs/spec.md`:** (1) the use of hidden inputs is stated openly, only the numbers stay hidden; (2) skin temperature is dropped from the first release and the illness wording removed; (3) permissions are requested in the staged order below. Points 4 and 5 remain to do.
+**Decided by the project owner on 2026-11-11 and applied to `docs/spec.md`:** (1) the use of hidden inputs is stated openly, only the numbers stay hidden; (2) skin temperature is dropped from the first release and the illness wording removed; (3) permissions are requested in the staged order below. Point 4 is drafted in `docs/store/2026-11-11-store-paperwork-drafts.md` and point 5 is proposed in `docs/decisions/2026-11-11-encryption-at-rest.md`; neither is decided.
 
 1. **Hidden inputs versus "features visible in the user interface".** Rule 8 keeps every number except Sleep, Energy and Activity out of sight; Play wants data use tied to visible features. The two fit if the game says in plain words which data shapes Energy (rule 5 already requires a one-sentence explanation), in the permission rationale screen and the privacy policy. Hiding the numbers is compatible; hiding that the data is used is not.
 2. **Skin temperature.** The spec uses it to suggest rest mode and, in the weekly score section, for "illness detection". That phrase sits badly with rule 7 and with Play's medical-tool wording, and the permission is under stricter review. Only one of six apps writes it. Options: drop it from the first release; or keep it with a clearly described rest-mode feature and no illness wording.
