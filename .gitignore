@@ -1,0 +1,14 @@
+.DS_Store
+
+# Build output
+build/
+.gradle/
+.kotlin/
+local.properties
+*.apk
+*.aab
+.idea/
+*.iml
+
+# Raw health exports never go into git. Only anonymized extracts in fixtures/.
+spikes/**/data/raw/

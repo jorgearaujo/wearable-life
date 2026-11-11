@@ -1,0 +1,126 @@
+[gd_scene load_steps=16 format=3]
+
+[ext_resource type="Script" path="res://main.gd" id="main"]
+[ext_resource type="Shader" path="res://grade.gdshader" id="grade_shader"]
+[ext_resource type="Texture2D" path="res://art/sky.png" id="sky"]
+[ext_resource type="Texture2D" path="res://art/hills.png" id="hills"]
+[ext_resource type="Texture2D" path="res://art/trees.png" id="trees"]
+[ext_resource type="Texture2D" path="res://art/ground.png" id="ground"]
+[ext_resource type="Texture2D" path="res://art/character.png" id="character"]
+[ext_resource type="Texture2D" path="res://art/drop.png" id="drop"]
+
+[sub_resource type="AtlasTexture" id="f0"]
+atlas = ExtResource("character")
+region = Rect2(0, 0, 16, 24)
+
+[sub_resource type="AtlasTexture" id="f1"]
+atlas = ExtResource("character")
+region = Rect2(16, 0, 16, 24)
+
+[sub_resource type="AtlasTexture" id="f2"]
+atlas = ExtResource("character")
+region = Rect2(32, 0, 16, 24)
+
+[sub_resource type="AtlasTexture" id="f3"]
+atlas = ExtResource("character")
+region = Rect2(48, 0, 16, 24)
+
+[sub_resource type="SpriteFrames" id="frames"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("f0")
+}, {
+"duration": 1.0,
+"texture": SubResource("f1")
+}, {
+"duration": 1.0,
+"texture": SubResource("f2")
+}, {
+"duration": 1.0,
+"texture": SubResource("f3")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 4.0
+}]
+
+[sub_resource type="ShaderMaterial" id="grade"]
+shader = ExtResource("grade_shader")
+
+[sub_resource type="ParticleProcessMaterial" id="rain"]
+emission_shape = 3
+emission_box_extents = Vector3(220, 1, 1)
+direction = Vector3(-0.15, 1, 0)
+spread = 2.0
+initial_velocity_min = 220.0
+initial_velocity_max = 260.0
+gravity = Vector3(0, 0, 0)
+
+[node name="Main" type="Node2D"]
+script = ExtResource("main")
+
+[node name="Sky" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0, 1)
+
+[node name="Sprite" type="Sprite2D" parent="Sky"]
+texture = ExtResource("sky")
+centered = false
+
+[node name="Hills" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0.3, 1)
+
+[node name="Sprite" type="Sprite2D" parent="Hills"]
+texture = ExtResource("hills")
+centered = false
+
+[node name="Trees" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0.6, 1)
+
+[node name="Sprite" type="Sprite2D" parent="Trees"]
+texture = ExtResource("trees")
+centered = false
+
+[node name="Ground" type="Sprite2D" parent="."]
+texture = ExtResource("ground")
+centered = false
+
+[node name="Character" type="AnimatedSprite2D" parent="."]
+position = Vector2(150, 368)
+sprite_frames = SubResource("frames")
+animation = &"idle"
+
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(180, 240)
+limit_left = 0
+limit_top = 0
+limit_right = 360
+limit_bottom = 480
+
+[node name="Rain" type="GPUParticles2D" parent="Camera"]
+position = Vector2(20, -260)
+amount = 140
+lifetime = 2.4
+preprocess = 2.4
+visibility_rect = Rect2(-320, -20, 640, 700)
+texture = ExtResource("drop")
+process_material = SubResource("rain")
+
+[node name="Grade" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="Rect" type="ColorRect" parent="Grade"]
+material = SubResource("grade")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Hud" type="CanvasLayer" parent="."]
+layer = 20
+
+[node name="Label" type="Label" parent="Hud"]
+offset_left = 3.0
+offset_top = 24.0
+theme_override_font_sizes/font_size = 8
+text = "…"
