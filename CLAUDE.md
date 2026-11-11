@@ -15,7 +15,7 @@ The full product spec is in `docs/spec.md`. Read it before starting any feature,
 ## Rules that must never be broken
 
 1. **The level never drops.** Flourishing only accumulates. When habits slip, things go dormant, never disappear.
-2. **Hidden values never grade the player.** HRV, resting heart rate, breathing rate, SpO2 and skin temperature may shape the day (morning Energy, Activity target, rest mode) but never lower the weekly score, the weather or level progress.
+2. **Hidden values never grade the player.** HRV, resting heart rate, breathing rate and SpO2 may shape the day (morning Energy, Activity target, rest mode) but never lower the Mood score, the weather or level progress. Skin temperature is not read in the first release.
 3. **In-game interactions never change the meters.** Chopping wood, throwing the stick, rowing, petting the dog and skipping stones are toys.
 4. **The game must be fully playable with only steps and sleep duration.** Every richer input (HRV, sleep stages, heart rate, breathing rate) is optional.
 5. **Every visible change is explainable in one plain sentence,** without showing internal numbers.

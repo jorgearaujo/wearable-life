@@ -69,7 +69,7 @@ Limits found:
 
 Question: the references (`docs/references/notes.md`) ask for chunkier pixels, a bigger character, glows in clean flat bands, night and dusk as full re-colourings, and mirror reflections on water. Can the spike do all of that, and what does it cost?
 
-**Answer: yes, and it got simpler.** The scene is now drawn once per frame instead of twice. Checked on the emulator only, release build. The rain, the light mask pass and the dithered glow of the first pass are gone from the code (they are in git history).
+**Answer: yes, and it got simpler.** The scene is now drawn once per frame instead of twice. Checked on the emulator and, for speed, on the Pixel 7a; release build. The rain, the light mask pass and the dithered glow of the first pass are gone from the code (they are in git history).
 
 What changed:
 
@@ -88,7 +88,7 @@ What changed:
 | Reflection, including lights | Works. |
 | Whole-pixel scaling at 120 wide | Works on 1080×2400. Other screen sizes not rechecked. |
 | Cost on the emulator | 15 to 18 fps, about the same as the first pass (21). Not a fair measure. |
-| Cost on the Pixel 7a | **Not measured.** The build is installed. |
+| Cost on the Pixel 7a | **60 fps, worst frame 17 ms** (read off the screen by the project owner, 2026-11-11). The phone's full refresh rate, the same as before any lights were added. |
 
 Limits found:
 
