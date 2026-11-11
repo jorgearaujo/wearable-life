@@ -57,16 +57,16 @@ const meterSets = [
   [3, 5, 5],
 ];
 const meterReasons = [
-  'SLEEP IS HIGH: A LONG, STEADY NIGHT.',
-  'ENERGY STARTS LOWER TODAY: YOUR RESTING HEART RATE IS HIGHER THAN USUAL.',
-  'ACTIVITY IS FILLING UP: A GOOD WALK THIS MORNING.',
+  'Sleep is high: a long, steady night.',
+  'Energy starts lower today: your resting heart rate is higher than usual.',
+  'Activity is filling up: a good walk this morning.',
 ];
 const cabinReasons = [
-  'THE CABIN IS UNDER ITS COVER FOR NOW. NOTHING IS LOST.',
-  'THE CABIN IS OPEN AGAIN.',
-  'A GOOD WEEK: THE FLOWERS BY THE DOOR HAVE OPENED.',
+  'The cabin is under its cover for now. Nothing is lost.',
+  'The cabin is open again.',
+  'A good week: the flowers by the door have opened.',
 ];
-const fireReasons = ['THE FIRE IS RESTING. THE LOGS ARE STILL THERE.', 'THE FIRE IS LIT AGAIN.'];
+const fireReasons = ['The fire is resting. The logs are still there.', 'The fire is lit again.'];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -505,7 +505,8 @@ class Hud extends Component {
   final ui.Image sheet;
   final List<int> widths;
 
-  static const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.,'!?-:";
+  static const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,'!?-:";
+  static const wrap = 104, pitch = 10.0; // widest line of text and distance between lines, in art pixels
   static const metersTop = 10.0;
   static const _cream = Color(0xFFFAF0D6), _ink = Color(0xFF2C2438);
   final _paint = Paint()
@@ -515,15 +516,15 @@ class Hud extends Component {
   List<String> lines = [];
   double left = 0; // seconds the bubble stays up
 
-  /// Width of each glyph, read from the sheet: glyphs sit left-aligned in 6x6 cells from row 8 down.
+  /// Width of each glyph, read from the sheet: glyphs sit left-aligned in 6x10 cells from row 8 down.
   static Future<List<int>> measure(ui.Image sheet) async {
     final data = (await sheet.toByteData())!;
     return [
       for (var i = 0; i < chars.length; i++)
         [
           for (var x = 0; x < 6; x++)
-            for (var y = 0; y < 6; y++)
-              if (data.getUint8(((8 + i ~/ 16 * 6 + y) * sheet.width + i % 16 * 6 + x) * 4 + 3) > 0) x + 1,
+            for (var y = 0; y < 10; y++)
+              if (data.getUint8(((8 + i ~/ 16 * 10 + y) * sheet.width + i % 16 * 6 + x) * 4 + 3) > 0) x + 1,
         ].fold(0, max),
     ];
   }
@@ -533,7 +534,7 @@ class Hud extends Component {
   void say(String sentence) {
     lines = [];
     for (final word in sentence.split(' ')) {
-      if (lines.isNotEmpty && _width('${lines.last} $word') <= 96) {
+      if (lines.isNotEmpty && _width('${lines.last} $word') <= wrap) {
         lines.last = '${lines.last} $word';
       } else {
         lines.add(word);
@@ -565,7 +566,7 @@ class Hud extends Component {
   /// A speech bubble above the character, kept inside the view; its tail follows the character.
   void _bubble(Canvas canvas) {
     final origin = game.camera.viewfinder.position;
-    final w = lines.map(_width).fold(0, max) + 8.0, h = lines.length * 7 + 5.0;
+    final w = lines.map(_width).fold(0, max) + 8.0, h = lines.length * pitch + 5;
     final tail = (112 - origin.x).clamp(8.0, game.viewW - 8);
     final x = (tail - w / 2).floorToDouble().clamp(2.0, game.viewW - 2 - w);
     final y = bankY - 36 - origin.y - h;
@@ -593,8 +594,8 @@ class Hud extends Component {
           continue;
         }
         final i = chars.indexOf(ch), gw = widths[i].toDouble();
-        final src = Rect.fromLTWH(i % 16 * 6.0, 8 + i ~/ 16 * 6.0, gw, 5);
-        canvas.drawImageRect(sheet, src, Rect.fromLTWH(cx, y + 3 + l * 7, gw, 5), _paint);
+        final src = Rect.fromLTWH(i % 16 * 6.0, 8 + i ~/ 16 * 10.0, gw, 9);
+        canvas.drawImageRect(sheet, src, Rect.fromLTWH(cx, y + 3 + l * pitch, gw, 9), _paint);
         cx += gw + 1;
       }
     }

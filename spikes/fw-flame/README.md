@@ -150,7 +150,7 @@ Three questions, all in the same scene. Checked on the emulator, release build. 
 
 Limits and things learned:
 
-- **The font is a placeholder and is hard to read.** Capitals only, and V, U, N and W are close to each other at 3 to 5 pixels wide. A real pixel font with lower case needs about 5x7 per letter, which gives about 18 letters a line at this view width: a sentence of 70 letters becomes four lines. Sentence length and font size have to be designed together.
+- **Replaced since: see the font section below.** The first font was a placeholder and hard to read. Capitals only, and V, U, N and W are close to each other at 3 to 5 pixels wide. A real pixel font with lower case needs about 5x7 per letter, which gives about 18 letters a line at this view width: a sentence of 70 letters becomes four lines. Sentence length and font size have to be designed together.
 - The meter levels and sentences are made up. Nothing reads health data.
 - Flame gives the camera the highest drawing priority, so anything added beside it is drawn underneath unless the camera's priority is lowered. Flame's `size` is the camera's view in art pixels, not the widget; `canvasSize` is the widget. Both cost time here.
 
@@ -181,3 +181,29 @@ Limits and things learned:
 - Not done: choosing the phase from the date and real positions from date and place (the spec asks for both; that is arithmetic for the pure module, not a rendering question), and a soft way to hide sun and moon (they switch off at once, behind the rain).
 
 Palette entries: 45, up from 36.
+
+## A readable font and how long a sentence can be (2026-11-11)
+
+**Question:** the capitals-only placeholder was hard to read. With a font people can read, how much text fits in the speech bubble?
+
+**Answer: a sentence of up to about 50 letters fits in two or three lines and reads well; the spec's longest example (72 letters) takes four lines and still fits.** Checked in an enlarged preview and on the emulator; cost on the Pixel 7a not yet measured.
+
+- **The font:** our own, drawn in `tools/make_art.py`: capitals 7 pixels tall, lower case 5 tall with 2 rows below the line, letters up to 5 wide, variable width. 59 glyphs: A–Z, a–z and `. , ' ! ? - :`. Lines are 10 pixels apart and wrap at 104 of the 120 pixels across.
+- **What fits:** 20 to 24 letters a line.
+
+| Sentence | Letters | Lines |
+| --- | --- | --- |
+| The fire is lit again. | 22 | 1 |
+| Sleep is high: a long, steady night. | 36 | 2 |
+| Activity is filling up: a good walk this morning. | 49 | 2 |
+| The cabin is under its cover for now. Nothing is lost. | 54 | 3 |
+| Energy starts lower today: your resting heart rate is higher than usual. | 72 | 4 |
+
+- A four-line bubble is 45 art pixels tall, about a sixth of the screen height, and covers the treeline above the character. Two lines (25 pixels) sits comfortably.
+- **Suggested rule for writing reasons:** aim for 50 letters or fewer, never more than about 75. Not yet in the spec.
+
+Limits:
+
+- English only. No digits (rule 8 keeps numbers off the screen, but dates or counts in goals may need them), no accented letters. Other languages run longer, German by roughly a third, so the same limit in letters is tighter for them.
+- The glyphs are a first drawing, not tuned letter by letter, and there is no kerning.
+- The font sheet is ordinary colour drawn after the shader, so text does not darken at night; the cream bubble is bright against a night scene.

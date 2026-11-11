@@ -245,36 +245,57 @@ for f in range(2):
 save(flowers, "flowers")
 
 # The interface is ordinary colour, not indices: it is drawn after the shader.
-# Row 0: three meter icons, 7x7, each as filled then empty. Below: a small font, one glyph per 6x6 cell.
+# Row 0: three meter icons, 7x7, each as filled then empty. Below: a small font, one glyph per 6x10 cell.
 ICONS = [
     ("..ooo.. .oaao.. oaao... oaao... oaaoo.o .oaaao. ..ooo..", (236, 226, 160)),  # moon: Sleep
     ("...oo.. ..oao.. .oaaoo. oaaaao. .ooaao. ..oao.. ..oo...", (255, 176, 72)),   # spark: Energy
     (".oo.... oaao... oaao... oaaooo. oaaaaao oaaaaao .ooooo.", (150, 200, 120)),  # boot: Activity
 ]
+# Font: capitals 7 tall, lower case 5 tall with 2 rows below the line, up to 5 wide. Each glyph is
+# (first row it uses, rows); cells are 6 wide and 10 tall with the baseline under row 6.
 GLYPHS = {
-    "A": ".X. X.X XXX X.X X.X", "B": "XX. X.X XX. X.X XX.", "C": ".XX X.. X.. X.. .XX", "D": "XX. X.X X.X X.X XX.",
-    "E": "XXX X.. XX. X.. XXX", "F": "XXX X.. XX. X.. X..", "G": ".XX X.. X.X X.X .XX", "H": "X.X X.X XXX X.X X.X",
-    "I": "X X X X X", "J": "..X ..X ..X X.X .X.", "K": "X.X X.X XX. X.X X.X", "L": "X.. X.. X.. X.. XXX",
-    "M": "X...X XX.XX X.X.X X...X X...X", "N": "X..X XX.X X.XX X..X X..X", "O": ".X. X.X X.X X.X .X.",
-    "P": "XX. X.X XX. X.. X..", "Q": ".X. X.X X.X XXX .XX", "R": "XX. X.X XX. X.X X.X", "S": ".XX X.. .X. ..X XX.",
-    "T": "XXX .X. .X. .X. .X.", "U": "X.X X.X X.X X.X XXX", "V": "X.X X.X X.X X.X .X.",
-    "W": "X...X X...X X.X.X XX.XX X...X", "X": "X.X X.X .X. X.X X.X", "Y": "X.X X.X .X. .X. .X.",
-    "Z": "XXX ..X .X. X.. XXX", ".": ". . . . X", ",": ".. .. .. .X X.", "'": "X X . . .", "!": "X X X . X",
-    "?": "XX. ..X .X. ... .X.", "-": "... ... XXX ... ...", ":": ". X . X .",
+    "A": (0, ".XXX. X...X X...X XXXXX X...X X...X X...X"), "B": (0, "XXXX. X...X X...X XXXX. X...X X...X XXXX."),
+    "C": (0, ".XXX. X...X X.... X.... X.... X...X .XXX."), "D": (0, "XXXX. X...X X...X X...X X...X X...X XXXX."),
+    "E": (0, "XXXXX X.... X.... XXXX. X.... X.... XXXXX"), "F": (0, "XXXXX X.... X.... XXXX. X.... X.... X...."),
+    "G": (0, ".XXX. X...X X.... X.XXX X...X X...X .XXX."), "H": (0, "X...X X...X X...X XXXXX X...X X...X X...X"),
+    "I": (0, "XXX .X. .X. .X. .X. .X. XXX"), "J": (0, "..XXX ...X. ...X. ...X. ...X. X..X. .XX.."),
+    "K": (0, "X...X X..X. X.X.. XX... X.X.. X..X. X...X"), "L": (0, "X.... X.... X.... X.... X.... X.... XXXXX"),
+    "M": (0, "X...X XX.XX X.X.X X.X.X X...X X...X X...X"), "N": (0, "X...X XX..X X.X.X X..XX X...X X...X X...X"),
+    "O": (0, ".XXX. X...X X...X X...X X...X X...X .XXX."), "P": (0, "XXXX. X...X X...X XXXX. X.... X.... X...."),
+    "Q": (0, ".XXX. X...X X...X X...X X.X.X X..X. .XX.X"), "R": (0, "XXXX. X...X X...X XXXX. X.X.. X..X. X...X"),
+    "S": (0, ".XXXX X.... X.... .XXX. ....X ....X XXXX."), "T": (0, "XXXXX ..X.. ..X.. ..X.. ..X.. ..X.. ..X.."),
+    "U": (0, "X...X X...X X...X X...X X...X X...X .XXX."), "V": (0, "X...X X...X X...X X...X X...X .X.X. ..X.."),
+    "W": (0, "X...X X...X X...X X.X.X X.X.X XX.XX X...X"), "X": (0, "X...X X...X .X.X. ..X.. .X.X. X...X X...X"),
+    "Y": (0, "X...X X...X .X.X. ..X.. ..X.. ..X.. ..X.."), "Z": (0, "XXXXX ....X ...X. ..X.. .X... X.... XXXXX"),
+    "a": (2, ".XX. ...X .XXX X..X .XXX"), "b": (0, "X... X... XXX. X..X X..X X..X XXX."),
+    "c": (2, ".XX X.. X.. X.. .XX"), "d": (0, "...X ...X .XXX X..X X..X X..X .XXX"),
+    "e": (2, ".XX. X..X XXXX X... .XXX"), "f": (0, ".XX X.. XXX X.. X.. X.. X.."),
+    "g": (2, ".XXX X..X X..X X..X .XXX ...X .XX."), "h": (0, "X... X... XXX. X..X X..X X..X X..X"),
+    "i": (0, "X . X X X X X"), "j": (0, ".X .. .X .X .X .X .X .X X."),
+    "k": (0, "X... X... X..X X.X. XX.. X.X. X..X"), "l": (0, "X X X X X X X"),
+    "m": (2, "XX.X. X.X.X X.X.X X.X.X X.X.X"), "n": (2, "XXX. X..X X..X X..X X..X"),
+    "o": (2, ".XX. X..X X..X X..X .XX."), "p": (2, "XXX. X..X X..X X..X XXX. X... X..."),
+    "q": (2, ".XXX X..X X..X X..X .XXX ...X ...X"), "r": (2, "X.X XX. X.. X.. X.."),
+    "s": (2, ".XXX X... .XX. ...X XXX."), "t": (1, ".X. XXX .X. .X. .X. ..X"),
+    "u": (2, "X..X X..X X..X X..X .XXX"), "v": (2, "X...X X...X .X.X. .X.X. ..X.."),
+    "w": (2, "X...X X...X X.X.X X.X.X .X.X."), "x": (2, "X.X X.X .X. X.X X.X"),
+    "y": (2, "X..X X..X X..X X..X .XXX ...X .XX."), "z": (2, "XXXX ...X .XX. X... XXXX"),
+    ".": (6, "X"), ",": (6, ".X X."), "'": (0, "X X"), "!": (0, "X X X X X . X"),
+    "?": (0, ".XX. X..X ...X ..X. .X.. .... .X.."), "-": (4, "XXX"), ":": (3, "X . . X"),
 }
 INK = (44, 36, 56, 255)
-ui = Image.new("RGBA", (96, 8 + 6 * 3), (0, 0, 0, 0))
+ui = Image.new("RGBA", (96, 8 + 10 * 4), (0, 0, 0, 0))
 for i, (rows, colour) in enumerate(ICONS):
     for y, row in enumerate(rows.split()):
         for x, ch in enumerate(row):
             if ch != ".":
                 ui.putpixel((i * 14 + x, y), INK if ch == "o" else colour + (255,))
                 ui.putpixel((i * 14 + 7 + x, y), (20, 24, 48, 120))
-for i, rows in enumerate(GLYPHS.values()):
+for i, (top, rows) in enumerate(GLYPHS.values()):
     for y, row in enumerate(rows.split()):
         for x, ch in enumerate(row):
             if ch == "X":
-                ui.putpixel((i % 16 * 6 + x, 8 + i // 16 * 6 + y), INK)
+                ui.putpixel((i % 16 * 6 + x, 8 + i // 16 * 10 + top + y), INK)
 save(ui, "ui")
 print("font order:", "".join(GLYPHS))
 
