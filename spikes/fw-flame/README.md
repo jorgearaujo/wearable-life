@@ -260,3 +260,14 @@ Phone result (Pixel 7a): 60 fps, worst frame 17 ms while walking and throwing. T
 - **Bigger ripples.** The stone is 2×2, each touch starts with a small splash, and the ring is a flat oval that widens in three steps (up to about 20 px across on the first touch, smaller on each skip). The water already has streaks and reflections, so a 2 px mark was lost in it.
 
 After a second look: the heart is 5×4 and becomes more transparent as it rises (it is drawn above the colour pass, like the speech bubble, because the indexed scene cannot hold a half-transparent pixel; so its pink does not change with time of day), and the stone is white so it shows against the dark water. Ripples accepted as they are.
+
+## Walking around with the camera on the character (2026-11-11)
+
+Question: if the player moves the character by tapping to its left or right and the camera stays on the character, does the landscape move smoothly?
+
+- **Tap to walk.** A tap on the land walks the character to that spot (30 art px a second). Objects still come first: the dog, the cabin, the fire, the water (skips a stone). Taps in the upper sky (above view row 110) step the time of day and weather.
+- **Camera locked to the character.** The camera sits on the same whole pixel the character is drawn on, so the character does not move on screen and the layers slide past it: ground 1:1, trees, hills and sky slower. At the two ends of the map the camera stops and the character walks on to the edge.
+- **Dragging and the slow automatic drift are gone**: the camera belongs to the character.
+- At 30 px a second and 60 frames a second the ground moves one art pixel every second frame, an even beat. Speeds that do not divide evenly (say 25 px/s) would give an uneven beat and visible stutter; worth a test before a walking speed is fixed.
+
+Limit: the placeholder map is 240 px wide and the view 120, so the camera only travels 120 px (4 seconds end to end). A proper judgement of long walks needs a wider map.

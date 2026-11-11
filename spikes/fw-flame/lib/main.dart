@@ -259,8 +259,11 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       // Not on top of the dog: stand just beside it instead.
       if (spot > dogX - 10 && spot < dogX + 34) spot = spot < dogX + 12 ? dogX - 10 : dogX + 34;
       hero.go(spot, Act.pick);
+    } else if (vy < skyTapBottom) {
+      hold = (hold + 1) % holds.length; // the sky steps the time of day and the weather
     } else {
-      hold = (hold + 1) % holds.length;
+      // Anywhere else: walk toward the tapped spot.
+      hero.go(wx.clamp(10.0, worldW - 10).floorToDouble(), Act.idle);
     }
   }
 
@@ -272,13 +275,10 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     sinceTouch += dt;
     // Move the camera first: everything below is placed relative to it. Placed before the move, the sun,
     // the moon and the lights sat one pixel off for a frame at every camera step, which looked like shaking.
-    if (hero.busy) {
-      // While the character is doing something, the camera follows it instead of drifting.
-      sinceTouch = 0;
-      _pan((hero.x - viewW / 2 - camLeft).clamp(-40 * dt, 40 * dt));
-    } else if (sinceTouch > 3) {
-      _pan(autoDir * 12 * dt);
-    }
+    // The camera is locked to the character, on the same whole pixel the character is drawn on, so the
+    // character stays dead centre and only the landscape moves. At the ends of the map the camera stops
+    // and the character walks on to the edge.
+    _pan(hero.x.floorToDouble() - viewW / 2 - camLeft);
     final held = holds[hold].$2;
     final t = fixedTime >= 0
         ? fixedTime / 1000
@@ -329,15 +329,14 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       hudText.value =
           '${fps.round()} fps  worst ${worstMs.round()} ms\n'
           'view ${viewW.round()}x${fit.viewH.round()}  ${holds[hold].$1}\n'
-          'tap: the dog, the water, a meter, the cabin,\nthe fire, the moon, or the sky';
+          'tap: left or right of the character to walk,\nthe dog, the water, the cabin, the fire, the sky';
       worstMs = 0;
     }
   }
 
   @override
   void onPanUpdate(DragUpdateInfo info) {
-    sinceTouch = 0;
-    _pan(-info.delta.global.x / (canvasSize.x / viewW));
+    // Dragging no longer moves the view: the camera belongs to the character.
   }
 
   /// Places a sky body along its arc; [s] runs 0 to 1 from rising to setting, anything else is below ground.
@@ -611,6 +610,7 @@ class Wildlife extends Component {
   }
 }
 
+const skyTapBottom = 110.0; // taps above this view row step the time of day
 const dogX = 125.0; // left edge of the dog's sprite
 
 enum Act { idle, walk, pet, pick, wind, release }
