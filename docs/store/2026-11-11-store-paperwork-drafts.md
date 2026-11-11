@@ -76,7 +76,7 @@ Must be at a public web address, linked from the store pages and from inside the
 2. **The short version.** The game reads health data from Health Connect or Apple Health on your phone. It never leaves your phone. We cannot see it. There is no account.
 3. **What the game reads.** The list from section 2, in plain words, split into "always" (steps, sleep) and "only if you allow it" (heart rate, resting heart rate, heart rate variability, breathing rate, workouts). Reading in the background and reading past data.
 4. **What the game does with it.** Works out the three meters, the weather and the growth of the world. Says openly that heart data shapes Energy and the day's activity target, and that the numbers themselves are not shown.
-5. **What is stored on your phone.** Daily meter results, your usual values (baselines), and the state of the world. Encrypted by the game with a key that stays on the phone, and kept out of cloud backups (decided 2026-11-11; wording to be revisited once the phone-change question is settled).
+5. **What is stored on your phone.** Daily meter results, your usual values (baselines), and the state of the world. Encrypted by the game with a key that stays on the phone, and kept out of cloud backups (decided 2026-11-11). Separately, your level and the state of your world, with no health figures, are included in your phone's own backup to your Google or Apple account, so a new phone can restore them; we never receive them.
 6. **What we do not do.** No server, no account, no advertising, no analytics, no crash reports containing health data, no selling or sharing, no use for anything other than the game.
 7. **Your control.** Remove any permission in Health Connect or Apple Health at any time; the game keeps working with less. Erase everything the game has stored, from its settings. Uninstalling removes it too.
 8. **Not a medical device.** The statement from section 1.
@@ -94,7 +94,7 @@ Open questions for the policy, for whoever reviews it:
 - **Usage text** (`NSHealthShareUsageDescription`), draft: "[Game] reads your steps, sleep and heart data to set the Sleep, Energy and Activity meters and the state of the game world. The data stays on this device."
 - No write access is requested, so no update usage text is needed.
 - The store description must make the use of health data clear and carry the statement from section 1.
-- Health information must not be stored in iCloud (guideline 5.1.3): the stored file is excluded from backup. See the encryption decision.
+- Health information must not be stored in iCloud (guideline 5.1.3): the encrypted file is excluded from backup. The progress-only file (level, world state) is included; whether Apple counts it as health information is to be confirmed. See the encryption decision.
 - Apple does not name games as an approved use of HealthKit. The app must show a visible health or fitness purpose; the three meters are that purpose. This is a review risk that cannot be settled on paper.
 - Privacy "nutrition label": data not collected, on the same condition as Play's Data safety form.
 
@@ -103,5 +103,5 @@ Open questions for the policy, for whoever reviews it:
 - Fill the placeholders; decide who the developer of record is.
 - Have the privacy policy reviewed; publish it at a public address.
 - Read the live Play Console form and adjust section 3 to its questions.
-- Decide `READ_MINDFULNESS`, the minimum age, and what happens to progress when a player changes phones.
+- Decide `READ_MINDFULNESS`, the minimum age, and confirm the two checks on progress in the system backup (Apple guideline 5.1.3; Android backup without the internet permission).
 - Translate the permission texts along with the rest of the game.
