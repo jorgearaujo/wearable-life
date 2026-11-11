@@ -1,9 +1,10 @@
 # fw-flame (Phase 0 spike, throwaway)
 
-The shared framework test from the Phase 0 plan, built in Flutter 3.47.9 with Flame 1.38.2. It uses the same placeholder art as `spikes/fw-godot`.
+The shared framework test from the Phase 0 plan, built in Flutter 3.47.9 with Flame 1.38.2. The first pass used the same placeholder art as `spikes/fw-godot`; the second pass (see below) has its own, made by `tools/make_art.py`.
 
-- `lib/main.dart` — portrait scene, 180 px wide, integer scaling worked out by hand from the screen width; sky plus three layers with parallax; a panning camera (drag, or it drifts on its own); an animated character; rain; a debug label; a placeholder campfire. The step count through the `health` plugin was removed on 2026-11-11 (we write our own bridge, and the plugin writes health values to the phone's log); it is in the first commit.
-- `shaders/grade.frag` — one full-screen shader that grades the same art from day through dusk to night, and adds two point lights (campfire, cabin window) when it is dark.
+- `lib/main.dart` — portrait scene, 120 px wide (180 in the first pass), integer scaling worked out by hand from the screen width; sky plus three layers with parallax; a panning camera (drag, or it drifts on its own); an animated character; a debug label; a placeholder campfire. Tap to hold a time of day. The step count through the `health` plugin was removed on 2026-11-11 (we write our own bridge, and the plugin writes health values to the phone's log); it is in the first commit.
+- `shaders/grade.frag` — one full-screen shader that turns palette indices into colours for the time of day, adds two point lights (campfire, cabin window) when it is dark, and mirrors the water.
+- `tools/make_art.py` — writes the indexed placeholder art and `palette.png` (needs Pillow; run from this folder).
 - `lib/daylight.dart`, `test/daylight_test.dart` — a pure-logic function and its test, with no engine involved.
 - `android/` — host project. The release build asks for no permission at all: no health permission, no `INTERNET`.
 
@@ -16,7 +17,7 @@ adb shell am start -n dev.wearablelife.fw_flame/.MainActivity
 dart test        # pure-logic test, no device needed
 ```
 
-For screenshots: `--dart-define=FIXED_TIME=0` holds one time of day (thousandths; 0 = midnight, 500 = noon). `--dart-define=LIGHTS=off` or `LIGHTS=nomask` switches the lights off or lets them light every layer.
+For screenshots: `--dart-define=FIXED_TIME=0` holds one time of day (thousandths; 0 = midnight, 500 = noon).
 
 ## Results so far (2026-11-10)
 
@@ -63,6 +64,39 @@ Limits found:
 - **A light only reveals the art's daytime colors, warmed.** The green ground near the fire looks yellow-green. A hand-picked "lit" palette per layer would look better and is an art-direction question.
 - The scene is now drawn twice per frame at low resolution. The mask could be redrawn only when the camera or layers move.
 - **First launch after install showed a black screen for 15 to 20 seconds on the emulator** before the first frame, in every variant. Later launches were not timed. Worth checking on the phone.
+
+## Second pass after the art references (2026-11-11)
+
+Question: the references (`docs/references/notes.md`) ask for chunkier pixels, a bigger character, glows in clean flat bands, night and dusk as full re-colourings, and mirror reflections on water. Can the spike do all of that, and what does it cost?
+
+**Answer: yes, and it got simpler.** The scene is now drawn once per frame instead of twice. Checked on the emulator only, release build. The rain, the light mask pass and the dithered glow of the first pass are gone from the code (they are in git history).
+
+What changed:
+
+- **View 120 art pixels wide** (was 180). On a 1080×2400 screen that is 9 screen pixels per art pixel and a 120×266 view. The camera is anchored to the bottom, so a taller screen shows more sky.
+- **Character 30 art pixels tall,** about 11 % of the screen height (was 7.5 %), with a large sitting dog next to it for scale. Placeholder shapes, our own.
+- **The art stores palette indices, not colours** (`tools/make_art.py`). Each pixel's red value is an index; the shader looks it up in `palette.png`, which has one row per time of day (night, dawn, day, dusk) and one row of firelit colours. Between times the shader mixes two rows. So night is not day darkened: each of the 36 colours has its own night colour, and the window, the fire, the moon and the stars stay bright. Stars are a palette entry that equals the sky colour by day.
+- **Glow in three flat bands, no dither.** Inside a band the pixel moves toward its colour in the firelit row.
+- **The light mask is the green channel of the art** (set where firelight may reach), so the second drawing of the scene is no longer needed.
+- **Water is a mirror made in the shader:** below the waterline it reads the scene upside down, shifts whole rows sideways by a pixel or two on a slow beat, tints toward a water colour per time of day, and adds sparse bright streaks. The firelight and the window are reflected too, with no extra drawing.
+- **Tap steps through** cycle, night, dawn, day, dusk, to hold a time for looking at it.
+
+| Check | Result |
+| --- | --- |
+| Four times of day from one set of art | Works. Dusk is pink-purple, night near-monochrome blue with bright accents. |
+| Flat-band glow, limited to near layers | Works. |
+| Reflection, including lights | Works. |
+| Whole-pixel scaling at 120 wide | Works on 1080×2400. Other screen sizes not rechecked. |
+| Cost on the emulator | 15 to 18 fps, about the same as the first pass (21). Not a fair measure. |
+| Cost on the Pixel 7a | **Not measured.** The build is installed. |
+
+Limits found:
+
+- **Indexed art cannot blend.** Every pixel must be one palette entry at full opacity, so soft fog, translucent rain and smooth text cannot be drawn into the scene. They need a second, ordinary layer drawn after the shader (the debug text already moved outside the game for this reason). Fog bands like the references' are the first thing to test next.
+- **The references use many colours, not a small palette.** 36 entries were enough for placeholder shapes; painted scenes may need a few hundred. The lookup itself does not care (the palette image can be wider), but each entry needs a colour per time of day. Here most were generated from three-colour ramps and about 30 picked by hand; that split is an art-pipeline decision.
+- **The sun and moon are painted into the sky** and do not move. They should be their own sprites placed from the injected time and location.
+- **The reflection mirrors the screen,** so it can only show what is in view above the waterline, and the bank's front face is mirrored as well. Good enough at this size.
+- The tap handler uses a Flame mixin that is marked as deprecated.
 
 ## Problems hit
 
