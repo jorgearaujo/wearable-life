@@ -262,7 +262,7 @@ Each meter has a visible metaphor, so players read moods instead of numbers. Pla
 
 The player can do small things just for fun, so the place feels alive rather than numbers with nice visuals. Every animation shows the character actually doing the action. None of these change the meters.
 
-- **Pet the dog:** tap the dog; the character walks over and pets its head, and the dog wags its tail.
+- **Pet the dog:** tap the dog; the character walks over, reaches down and pets its head, and the dog wags its tail and leans into it. The petting itself is animated on the character; a small heart above the dog is optional extra feedback, never a replacement.
 - **Row:** the character gets into the boat from the start of the adventure and rows around.
 - **Skip stones:** go to the shore, pick a stone, skip it.
 - **Chop wood:** cut a log and throw it on the fire.
