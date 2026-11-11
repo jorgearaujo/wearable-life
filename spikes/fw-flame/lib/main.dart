@@ -246,6 +246,11 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     elapsed += dt;
     worstMs = max(worstMs, dt * 1000.0); // frame-to-frame gap, same measure as the Godot spike
     sinceTouch += dt;
+    // Move the camera first: everything below is placed relative to it. Placed before the move, the sun,
+    // the moon and the lights sat one pixel off for a frame at every camera step, which looked like shaking.
+    if (sinceTouch > 3) {
+      _pan(autoDir * 12 * dt);
+    }
     final held = holds[hold].$2;
     final t = fixedTime >= 0
         ? fixedTime / 1000
@@ -288,10 +293,6 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     // Sun and moon each cross the sky on an arc and set behind the hills. Rain clouds hide them.
     _arc(sun, (t - 0.22) / 0.56, 112, origin.x);
     _arc(moon, ((t - 0.72) % 1.0) / 0.56, 100, origin.x);
-    if (sinceTouch > 3) {
-      _pan(autoDir * 12 * dt);
-    }
-
     frames++;
     window += dt;
     if (frames % 30 == 0) {

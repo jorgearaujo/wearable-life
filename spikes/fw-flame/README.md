@@ -172,6 +172,7 @@ Limits and things learned:
 **Works.** Each is a 35x35 indexed sprite between the sky and the hills. The sun crosses from 0.22 to 0.78 of the day and the moon from 0.72 to 0.28, each on an arc, in whole-pixel steps; they rise and set behind the ridge and are mirrored in the water. In rain both are hidden once the rain is half faded in; in fog they stay.
 
 - A sprite with an odd size must not use a centre anchor: it lands on half pixels and the edges pick up wrong palette indices (seen as stray blue marks). Placed by its top-left corner it is clean.
+- Anything pinned to the screen (sun, moon, light positions, waterline) must be placed after the camera moves in the same frame. Placed before, it sits one pixel off for a frame at every camera step, and the sun and moon visibly shook while the view panned. Seen on the phone, not on the slow emulator; fixed.
 - Sun and moon have separate palette entries, so both can be in the sky at dusk in the right colours.
 - Not done: moon phases, real positions from date and place (the spec asks for both), and a soft way to hide them (they switch off at once, behind the rain).
 
