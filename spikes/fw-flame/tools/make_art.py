@@ -32,6 +32,10 @@ DAY = {
     "scarf": (240, 196, 84),
     "dog": (232, 226, 210), "dog_shade": (176, 150, 120),
     "log": (74, 50, 34), "flame": (255, 138, 42), "core": (255, 226, 122),
+    # Added for the third pass. New entries go at the end: the game code refers to some by number.
+    "tarp": (132, 146, 160), "tarp_shade": (100, 112, 132), "rope": (206, 186, 146),
+    "petal": (238, 128, 150), "petal_light": (252, 238, 204), "ash": (112, 106, 108),
+    "moon": (226, 234, 244), "moon_shade": (196, 210, 230),
 }
 NAMES = list(DAY)
 INDEX = {n: i + 1 for i, n in enumerate(NAMES)}
@@ -65,17 +69,20 @@ OVERRIDE = {
         "sky1": (10, 14, 40), "sky2": (14, 20, 52), "sky3": (20, 28, 66), "sky4": (28, 38, 82), "sky5": (38, 50, 98),
         "star": (236, 240, 255), "sun": (236, 240, 255), "halo1": (30, 42, 88), "halo2": (52, 68, 120),
         "window": (255, 214, 120), "cloud": (44, 58, 108), "cloud_shade": (32, 44, 90),
+        "sun": (255, 236, 190), "moon": (236, 240, 255), "moon_shade": (190, 202, 236),
     },
     "dawn": {
         "sky1": (96, 104, 168), "sky2": (150, 130, 186), "sky3": (214, 160, 188), "sky4": (246, 196, 184),
         "sky5": (252, 226, 190), "star": (96, 104, 168), "sun": (255, 236, 190), "halo1": (250, 208, 190),
         "halo2": (254, 226, 196), "window": (255, 214, 120),
+        "moon": (236, 226, 236), "moon_shade": (214, 196, 222),
     },
     "day": {},
     "dusk": {
         "sky1": (72, 52, 120), "sky2": (128, 70, 136), "sky3": (196, 96, 132), "sky4": (240, 138, 116),
         "sky5": (252, 186, 128), "star": (72, 52, 120), "sun": (255, 214, 140), "halo1": (250, 160, 120),
         "halo2": (254, 190, 130), "window": (255, 214, 120),
+        "moon": (244, 222, 226), "moon_shade": (216, 180, 204),
     },
     "lit": {"window": (255, 214, 120)},
 }
@@ -113,21 +120,31 @@ def layer():
     return img, ImageDraw.Draw(img)
 
 
-# Sky: flat bands, a sun (the moon at night) with two flat halo rings, a few stars and clouds.
+# Sky: flat bands, a few stars and clouds. The sun and moon are their own pieces (below).
 # The sky does not scroll, so everything sits in the first 120 columns.
 sky, d = layer()
 for i, top in enumerate([0, 44, 80, 112, 138]):
     d.rectangle([0, top, W, H], fill=far(f"sky{i + 1}"))
 for _ in range(16):
     d.point([random.randint(2, 117), random.randint(2, 42)], fill=far("star"))
-sx, sy = 86, 66
-for r, name in [(17, "halo1"), (11, "halo2"), (6, "sun")]:
-    d.ellipse([sx - r, sy - r, sx + r, sy + r], fill=far(name))
 for cx, cy, w in [(26, 92, 22), (60, 120, 30), (104, 104, 14)]:
     d.ellipse([cx - w, cy - 4, cx + w, cy + 5], fill=far("cloud_shade"))
     d.ellipse([cx - w + 4, cy - 7, cx + w - 6, cy + 1], fill=far("cloud"))
     d.rectangle([cx - w, cy + 3, cx + w, cy + 5], fill=far("cloud_shade"))
 save(sky, "sky")
+
+# Sun with two flat halo rings, and a moon with no halo, each 35x35 so the game can move them.
+sun = Image.new("RGBA", (35, 35), (0, 0, 0, 0))
+d = ImageDraw.Draw(sun)
+for r, name in [(17, "halo1"), (11, "halo2"), (6, "sun")]:
+    d.ellipse([17 - r, 17 - r, 17 + r, 17 + r], fill=far(name))
+save(sun, "sun")
+moon = Image.new("RGBA", (35, 35), (0, 0, 0, 0))
+d = ImageDraw.Draw(moon)
+d.ellipse([11, 11, 23, 23], fill=far("moon"))
+for x, y, r in [(14, 15, 1), (19, 19, 2), (20, 13, 1)]:
+    d.ellipse([x - r, y - r, x + r, y + r], fill=far("moon_shade"))
+save(moon, "moon")
 
 # Two ridges of far hills.
 hills, d = layer()
@@ -181,6 +198,71 @@ d.rectangle([dx - 3, dy + 13, dx, dy + 15], fill=c("dog_shade"))
 d.rectangle([dx, dy + 12, dx + 4, dy + 16], fill=c("dog_shade"))
 d.point([dx + 14, dy + 3], fill=c("door"))
 save(ground, "ground")
+
+# Dormant and flourishing pieces, drawn over the same cabin and bank. World position is in main.dart.
+# A tarp over the whole cabin: 66x54, placed at (40, BANK - 53).
+tarp = Image.new("RGBA", (66, 54), (0, 0, 0, 0))
+d = ImageDraw.Draw(tarp)
+d.polygon([(33, 0), (2, 24), (3, 53), (62, 53), (63, 24)], fill=c("tarp"))
+d.polygon([(33, 0), (2, 24), (8, 24), (33, 5)], fill=c("tarp_shade"))
+for x in (12, 24, 41, 53):
+    d.line([x, 26 + (x % 5), x, 53], fill=c("tarp_shade"))
+for y in (24, 40):
+    d.line([2, y, 63, y], fill=c("rope"))
+for x in (0, 64):
+    d.rectangle([x, 51, x + 1, 53], fill=c("trunk"))
+d.line([2, 40, 0, 51], fill=c("rope"))
+d.line([63, 40, 65, 51], fill=c("rope"))
+save(tarp, "tarp")
+
+# Flowers along the front of the cabin, two frames of 70x8: closed buds, then open.
+flowers = Image.new("RGBA", (140, 8), (0, 0, 0, 0))
+d = ImageDraw.Draw(flowers)
+spots = [(random.randint(1, 67), random.randint(3, 5)) for _ in range(13)]
+for f in range(2):
+    for i, (x, h) in enumerate(spots):
+        ox = f * 70 + x
+        d.line([ox, 7 - h, ox, 7], fill=c("tuft"))
+        if f == 0:
+            d.point([ox, 7 - h], fill=c("tree_light"))
+        else:
+            d.rectangle([ox - 1, 6 - h, ox + 1, 7 - h], fill=c("petal" if i % 3 else "petal_light"))
+            d.point([ox, 6 - h], fill=c("petal_light" if i % 3 else "petal"))
+save(flowers, "flowers")
+
+# The interface is ordinary colour, not indices: it is drawn after the shader.
+# Row 0: three meter icons, 7x7, each as filled then empty. Below: a small font, one glyph per 6x6 cell.
+ICONS = [
+    ("..ooo.. .oaao.. oaao... oaao... oaaoo.o .oaaao. ..ooo..", (236, 226, 160)),  # moon: Sleep
+    ("...oo.. ..oao.. .oaaoo. oaaaao. .ooaao. ..oao.. ..oo...", (255, 176, 72)),   # spark: Energy
+    (".oo.... oaao... oaao... oaaooo. oaaaaao oaaaaao .ooooo.", (150, 200, 120)),  # boot: Activity
+]
+GLYPHS = {
+    "A": ".X. X.X XXX X.X X.X", "B": "XX. X.X XX. X.X XX.", "C": ".XX X.. X.. X.. .XX", "D": "XX. X.X X.X X.X XX.",
+    "E": "XXX X.. XX. X.. XXX", "F": "XXX X.. XX. X.. X..", "G": ".XX X.. X.X X.X .XX", "H": "X.X X.X XXX X.X X.X",
+    "I": "X X X X X", "J": "..X ..X ..X X.X .X.", "K": "X.X X.X XX. X.X X.X", "L": "X.. X.. X.. X.. XXX",
+    "M": "X...X XX.XX X.X.X X...X X...X", "N": "X..X XX.X X.XX X..X X..X", "O": ".X. X.X X.X X.X .X.",
+    "P": "XX. X.X XX. X.. X..", "Q": ".X. X.X X.X XXX .XX", "R": "XX. X.X XX. X.X X.X", "S": ".XX X.. .X. ..X XX.",
+    "T": "XXX .X. .X. .X. .X.", "U": "X.X X.X X.X X.X XXX", "V": "X.X X.X X.X X.X .X.",
+    "W": "X...X X...X X.X.X XX.XX X...X", "X": "X.X X.X .X. X.X X.X", "Y": "X.X X.X .X. .X. .X.",
+    "Z": "XXX ..X .X. X.. XXX", ".": ". . . . X", ",": ".. .. .. .X X.", "'": "X X . . .", "!": "X X X . X",
+    "?": "XX. ..X .X. ... .X.", "-": "... ... XXX ... ...", ":": ". X . X .",
+}
+INK = (44, 36, 56, 255)
+ui = Image.new("RGBA", (96, 8 + 6 * 3), (0, 0, 0, 0))
+for i, (rows, colour) in enumerate(ICONS):
+    for y, row in enumerate(rows.split()):
+        for x, ch in enumerate(row):
+            if ch != ".":
+                ui.putpixel((i * 14 + x, y), INK if ch == "o" else colour + (255,))
+                ui.putpixel((i * 14 + 7 + x, y), (20, 24, 48, 120))
+for i, rows in enumerate(GLYPHS.values()):
+    for y, row in enumerate(rows.split()):
+        for x, ch in enumerate(row):
+            if ch == "X":
+                ui.putpixel((i % 16 * 6 + x, 8 + i // 16 * 6 + y), INK)
+save(ui, "ui")
+print("font order:", "".join(GLYPHS))
 
 # Character: 4 frames of 16x30, a small idle bob. A hat and a scarf carry the identity; no drawn eyes.
 sheet = Image.new("RGBA", (64, 30), (0, 0, 0, 0))

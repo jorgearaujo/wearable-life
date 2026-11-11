@@ -125,7 +125,7 @@ Tap now steps through: cycle, night, dawn, day, dusk, day rain, dusk rain, night
 
 **Limits found**
 
-- The sun and moon are painted into the sky art, so they still shine through the rain. Overcast needs the sun as its own piece, or cloudy sky rows.
+- The sun and moon were painted into the sky art, so they still shone through the rain. Fixed in the third pass: they are their own pieces and hide in rain.
 - The muting is one formula. The references pull each colour down by hand; real art would use wet palette rows (one more row per time of day).
 - Fog is drawn over the lights, so it dulls the campfire glow. Drawing lights after fog would need the glow moved out of the shader or the fog moved into it.
 - Fog wisps are stacked rectangles and look like bands. Drawn fog sprites would use the same layer.
@@ -135,3 +135,44 @@ Tap now steps through: cycle, night, dawn, day, dusk, day rain, dusk rain, night
 **Cost on the Pixel 7a:** 60 fps, worst frame 17 ms with rain and fog on (read off the screen by the project owner, 2026-11-11), the same as without weather. Measured before the ripples were added.
 
 **Bug fixed on the way:** the `Stack` holding the debug text needed an explicit alignment; without one the first frame threw on a fresh start and the screen stayed blank.
+
+## Third pass: meters and reasons, dormant states, moving sun and moon (2026-11-11)
+
+Three questions, all in the same scene. Checked on the emulator, release build. **Cost on the Pixel 7a: not yet measured;** the build is installed.
+
+### 1. Meters and the one-line reason over the scene
+
+**Works.** The interface is an ordinary Flame component outside the camera, so the shader never touches it. It draws in ordinary colours, scaled so one unit is one art pixel, and stays on the pixel grid.
+
+- **Meters:** three rows of five 7x7 icons at the top left (moon for Sleep, spark for Energy, boot for Activity). A filled icon is in colour; an empty one is a dark see-through shape that works on any sky. No numbers, no bars, no panel (rule 8).
+- **Reason:** tap a meter row and a speech bubble appears above the character for six seconds with one sentence (rule 5). Its tail follows the character as the view pans, and the bubble stays inside the screen.
+- **Text:** our own small pixel font, drawn by `tools/make_art.py` into `ui.png` (capitals, 5 pixels tall, variable width). Sentences wrap to 96 art pixels: about 25 letters a line, three lines for the longest spec example.
+
+Limits and things learned:
+
+- **The font is a placeholder and is hard to read.** Capitals only, and V, U, N and W are close to each other at 3 to 5 pixels wide. A real pixel font with lower case needs about 5x7 per letter, which gives about 18 letters a line at this view width: a sentence of 70 letters becomes four lines. Sentence length and font size have to be designed together.
+- The meter levels and sentences are made up. Nothing reads health data.
+- Flame gives the camera the highest drawing priority, so anything added beside it is drawn underneath unless the camera's priority is lowered. Flame's `size` is the camera's view in art pixels, not the widget; `canvasSize` is the widget. Both cost time here.
+
+### 2. Dormant and flourishing states of the same things
+
+**Works, and each state is cheap.** Tap the cabin to step through three states; tap the fire to switch it. Each tap also shows a one-line reason in the bubble.
+
+| Thing | Dormant | Normal | Flourishing |
+| --- | --- | --- | --- |
+| Cabin | A tarp sprite drawn over it; the window light fades out | Open, window lit | Same, and the flower buds along the front open |
+| Fire | Logs under a little ash; its light fades out | Lit | – |
+
+- Nothing is removed: the cabin is still under the tarp, the logs stay, the flowers close into buds (rule 1).
+- Cost per state: one small sprite (tarp 66x54, flowers 70x8 in two frames) and three to six palette entries, each of which gets its night, dawn and dusk colours from the same ramps.
+- Lights fade over half a second. The tarp and the flowers switch at once: indexed art cannot be half transparent, so a soft change would need drawn in-between frames.
+
+### 3. Sun and moon as their own pieces
+
+**Works.** Each is a 35x35 indexed sprite between the sky and the hills. The sun crosses from 0.22 to 0.78 of the day and the moon from 0.72 to 0.28, each on an arc, in whole-pixel steps; they rise and set behind the ridge and are mirrored in the water. In rain both are hidden once the rain is half faded in; in fog they stay.
+
+- A sprite with an odd size must not use a centre anchor: it lands on half pixels and the edges pick up wrong palette indices (seen as stray blue marks). Placed by its top-left corner it is clean.
+- Sun and moon have separate palette entries, so both can be in the sky at dusk in the right colours.
+- Not done: moon phases, real positions from date and place (the spec asks for both), and a soft way to hide them (they switch off at once, behind the rain).
+
+Palette entries: 44, up from 36.

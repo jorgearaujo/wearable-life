@@ -27,8 +27,16 @@ final windowPos = Vector2(83, bankY - 17); // the cabin window in ground.png
 /// Tap to step through these: (name, time of day, weather). "cycle" runs a whole day in [cycleSeconds].
 /// Weather: 0 clear, 1 rain, 2 fog. --dart-define=HOLD=5 starts on one of them.
 const holds = <(String, double, int)>[
-  ('cycle', -1, 0), ('night', 0, 0), ('dawn', 0.27, 0), ('day', 0.5, 0), ('dusk', 0.74, 0),
-  ('day rain', 0.5, 1), ('dusk rain', 0.74, 1), ('night rain', 0, 1), ('dawn fog', 0.27, 2), ('night fog', 0, 2),
+  ('cycle', -1, 0),
+  ('night', 0, 0),
+  ('dawn', 0.27, 0),
+  ('day', 0.5, 0),
+  ('dusk', 0.74, 0),
+  ('day rain', 0.5, 1),
+  ('dusk rain', 0.74, 1),
+  ('night rain', 0, 1),
+  ('dawn fog', 0.27, 2),
+  ('night fog', 0, 2),
 ];
 
 /// Palette rows: 0 night, 1 dawn, 2 day, 3 dusk. Each key is (time of day, row); between keys the two
@@ -40,6 +48,25 @@ const fogColours = [Color(0xFF46598C), Color(0xFFFADCD7), Color(0xFFE1EBF0), Col
 const rainColours = [Color(0xFF8CA0D2), Color(0xFFFFF0EB), Color(0xFFF0F5FA), Color(0xFFF0C8D2)];
 
 final hudText = ValueNotifier('...');
+
+/// Made-up meter levels out of 5 (Sleep, Energy, Activity); a tap that changes the time also changes these.
+const meterSets = [
+  [4, 3, 2],
+  [5, 4, 1],
+  [2, 2, 4],
+  [3, 5, 5],
+];
+const meterReasons = [
+  'SLEEP IS HIGH: A LONG, STEADY NIGHT.',
+  'ENERGY STARTS LOWER TODAY: YOUR RESTING HEART RATE IS HIGHER THAN USUAL.',
+  'ACTIVITY IS FILLING UP: A GOOD WALK THIS MORNING.',
+];
+const cabinReasons = [
+  'THE CABIN IS UNDER ITS COVER FOR NOW. NOTHING IS LOST.',
+  'THE CABIN IS OPEN AGAIN.',
+  'A GOOD WEEK: THE FLOWERS BY THE DOOR HAVE OPENED.',
+];
+const fireReasons = ['THE FIRE IS RESTING. THE LOGS ARE STILL THERE.', 'THE FIRE IS LIT AGAIN.'];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,8 +95,9 @@ Future<void> main() async {
               children: [
                 GameWidget(game: SpikeGame(program, fit, palette)),
                 // Debug text sits outside the game: inside it, the shader would read it as palette indices.
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 48, 0, 0),
+                Positioned(
+                  left: 12,
+                  bottom: 16,
                   child: ValueListenableBuilder(
                     valueListenable: hudText,
                     builder: (_, text, _) => Text(
@@ -117,6 +145,14 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
   final ui.FragmentProgram program;
   late final GradePostProcess grade;
   final layers = <(SpriteComponent, double)>[];
+  late final SpriteComponent sun, moon, tarp, flowers;
+  late final List<Sprite> flowerFrames;
+  late final Hud hud;
+
+  /// 0 dormant (under a tarp), 1 open, 2 flourishing (flowers open). Tap the cabin to step through.
+  int cabin = 1;
+  bool fireLit = true; // tap the fire
+  double fireGlow = 1, windowGlow = 1;
 
   double camLeft = 60;
   double viewW = baseW;
@@ -143,7 +179,20 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       final layer = SpriteComponent(sprite: await loadSprite('$name.png'));
       layers.add((layer, factor));
       world.add(layer);
+      if (name == 'sky') {
+        // Sun and moon sit between the sky and the hills, so they rise and set behind the ridge.
+        sun = SpriteComponent(sprite: await loadSprite('sun.png'));
+        moon = SpriteComponent(sprite: await loadSprite('moon.png'));
+        world.addAll([sun, moon]);
+      }
     }
+    final flowerSheet = await images.load('flowers.png');
+    flowerFrames = [
+      for (var f = 0; f < 2; f++) Sprite(flowerSheet, srcPosition: Vector2(70.0 * f, 0), srcSize: Vector2(70, 8)),
+    ];
+    flowers = SpriteComponent(sprite: flowerFrames[0], position: Vector2(38, bankY - 7));
+    tarp = SpriteComponent(sprite: await loadSprite('tarp.png'), position: Vector2(40, bankY - 53))..opacity = 0;
+    world.addAll([tarp, flowers]);
     world.add(
       SpriteAnimationComponent.fromFrameData(
         await images.load('character.png'),
@@ -160,11 +209,36 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     camera.viewfinder.position = Vector2(camLeft, worldH - viewH);
     grade = GradePostProcess(program, palette);
     camera.postProcess = grade;
+    // The interface is an ordinary component outside the camera, so the shader never touches it.
+    final sheet = await images.load('ui.png');
+    hud = Hud(this, sheet, await Hud.measure(sheet));
+    // Flame gives the camera the highest priority, so it would draw over everything else in the game.
+    camera.priority = 0;
+    add(hud..priority = 10);
     _pan(0);
   }
 
   @override
-  void onTap() => hold = (hold + 1) % holds.length;
+  void onTapDown(TapDownInfo info) {
+    // canvasSize is the widget on screen; `size` is the camera's view in art pixels.
+    final scale = canvasSize.x / viewW;
+    final vx = info.eventPosition.widget.x / scale, vy = info.eventPosition.widget.y / scale;
+    final wx = vx + camera.viewfinder.position.x, wy = vy + camera.viewfinder.position.y;
+    final row = ((vy - Hud.metersTop) / 9).floor();
+    if (vx < 48 && row >= 0 && row < 3) {
+      hud.say(meterReasons[row]);
+    } else if (wx > 40 && wx < 106 && wy > bankY - 53 && wy < bankY) {
+      cabin = (cabin + 1) % 3;
+      tarp.opacity = cabin == 0 ? 1 : 0; // all or nothing: half-transparent indices would be wrong colours
+      flowers.sprite = flowerFrames[cabin == 2 ? 1 : 0];
+      hud.say(cabinReasons[cabin]);
+    } else if ((wx - firePos.x).abs() < 14 && wy > bankY - 24 && wy < bankY + 6) {
+      fireLit = !fireLit;
+      hud.say(fireReasons[fireLit ? 1 : 0]);
+    } else {
+      hold = (hold + 1) % holds.length;
+    }
+  }
 
   @override
   void update(double dt) {
@@ -205,9 +279,15 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     grade
       ..step = step.toDouble()
       ..waterline = waterY - origin.y;
-    grade.lights[0].setValues(firePos.x - origin.x, firePos.y - origin.y, 40 * flicker, 1);
+    // Lights go out and come back over half a second when the fire or cabin changes state.
+    fireGlow = (fireGlow + (fireLit ? 2 : -2) * dt).clamp(0.0, 1.0);
+    windowGlow = (windowGlow + (cabin > 0 ? 2 : -2) * dt).clamp(0.0, 1.0);
+    grade.lights[0].setValues(firePos.x - origin.x, firePos.y - origin.y, 40 * flicker, fireGlow);
     // The window is a flat lit shape with one thin ring around it; the dark scene does the rest.
-    grade.lights[1].setValues(windowPos.x - origin.x, windowPos.y - origin.y, 9, 0.34);
+    grade.lights[1].setValues(windowPos.x - origin.x, windowPos.y - origin.y, 9, 0.34 * windowGlow);
+    // Sun and moon each cross the sky on an arc and set behind the hills. Rain clouds hide them.
+    _arc(sun, (t - 0.22) / 0.56, 112, origin.x);
+    _arc(moon, ((t - 0.72) % 1.0) / 0.56, 100, origin.x);
     if (sinceTouch > 3) {
       _pan(autoDir * 12 * dt);
     }
@@ -217,8 +297,10 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     if (frames % 30 == 0) {
       fps = 30 / window;
       window = 0;
-      hudText.value = '${fps.round()} fps  worst ${worstMs.round()} ms\n'
-          'view ${viewW.round()}x${fit.viewH.round()}  ${holds[hold].$1} (tap to change)';
+      hudText.value =
+          '${fps.round()} fps  worst ${worstMs.round()} ms\n'
+          'view ${viewW.round()}x${fit.viewH.round()}  ${holds[hold].$1}\n'
+          'tap: a meter, the cabin, the fire, or anywhere else';
       worstMs = 0;
     }
   }
@@ -226,7 +308,15 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
   @override
   void onPanUpdate(DragUpdateInfo info) {
     sinceTouch = 0;
-    _pan(-info.delta.global.x / (size.x / viewW));
+    _pan(-info.delta.global.x / (canvasSize.x / viewW));
+  }
+
+  /// Places a sky body along its arc; [s] runs 0 to 1 from rising to setting, anything else is below ground.
+  void _arc(SpriteComponent body, double s, double height, double left) {
+    final up = s >= 0 && s <= 1 && grade.rain < 0.5;
+    body.opacity = up ? 1 : 0;
+    // Top-left of a 35 pixel sprite, on whole pixels: a centre anchor would land on half pixels.
+    body.position = Vector2(left + (92 * s).roundToDouble() - 3, (135 - sin(pi * s) * height).roundToDouble());
   }
 
   void _pan(double dx) {
@@ -260,7 +350,10 @@ class GradePostProcess extends PostProcess {
   // Fixed random sets: (x, y, speed) per rain streak and (x, y, width, drift) per fog wisp.
   static final _rng = Random(7);
   final _streaks = List.generate(70, (_) => (_rng.nextDouble(), _rng.nextDouble(), 150 + _rng.nextDouble() * 70));
-  final _wisps = List.generate(9, (_) => (_rng.nextDouble(), _rng.nextDouble(), 40 + _rng.nextDouble() * 50, 2 + _rng.nextDouble() * 4));
+  final _wisps = List.generate(
+    9,
+    (_) => (_rng.nextDouble(), _rng.nextDouble(), 40 + _rng.nextDouble() * 50, 2 + _rng.nextDouble() * 4),
+  );
 
   /// x, y in view pixels, radius in art pixels, strength 0 to 1.
   final lights = [Vector4.zero(), Vector4.zero()];
@@ -269,7 +362,19 @@ class GradePostProcess extends PostProcess {
   void postProcess(Vector2 size, Canvas canvas) {
     final scene = rasterizeSubtree();
     var i = 0;
-    for (final v in [size.x, size.y, scene.width.toDouble(), scene.height.toDouble(), rowA, rowB, mix, dark, waterline, step, max(rain, fog)]) {
+    for (final v in [
+      size.x,
+      size.y,
+      scene.width.toDouble(),
+      scene.height.toDouble(),
+      rowA,
+      rowB,
+      mix,
+      dark,
+      waterline,
+      step,
+      max(rain, fog),
+    ]) {
       shader.setFloat(i++, v);
     }
     for (final l in lights) {
@@ -301,7 +406,10 @@ class GradePostProcess extends PostProcess {
       final paint = Paint()..isAntiAlias = false;
       // A thin veil over everything, a thicker one low down, then drifting wisps that stack up.
       canvas.drawRect(Rect.fromLTWH(0, 0, w, h), paint..color = fogColour.withValues(alpha: 0.16 * fog));
-      canvas.drawRect(Rect.fromLTWH(0, waterline - 70, w, 70 + h), paint..color = fogColour.withValues(alpha: 0.18 * fog));
+      canvas.drawRect(
+        Rect.fromLTWH(0, waterline - 70, w, 70 + h),
+        paint..color = fogColour.withValues(alpha: 0.18 * fog),
+      );
       paint.color = fogColour.withValues(alpha: 0.2 * fog);
       for (final (x, y, width, drift) in _wisps) {
         final span = w + width;
@@ -360,13 +468,124 @@ class Props extends Component {
   static Paint _index(int index) => Paint()
     ..color = Color.fromARGB(255, index * 4, 0, 0)
     ..isAntiAlias = false;
-  final _log = _index(34), _flame = _index(35), _core = _index(36);
+  final _log = _index(34), _flame = _index(35), _core = _index(36), _ash = _index(42);
 
   @override
   void render(Canvas canvas) {
     canvas.drawRect(Rect.fromLTWH(firePos.x - 6, bankY - 2, 12, 2), _log);
+    if (!game.fireLit) {
+      // Dormant: the logs stay, under a little ash.
+      canvas.drawRect(Rect.fromLTWH(firePos.x - 4, bankY - 3, 8, 1), _ash);
+      canvas.drawRect(Rect.fromLTWH(firePos.x - 2, bankY - 4, 4, 1), _ash);
+      return;
+    }
     final tall = (game.elapsed * 8).floor().isEven ? 8.0 : 6.0;
     canvas.drawRect(Rect.fromLTWH(firePos.x - 3, bankY - 2 - tall, 6, tall), _flame);
     canvas.drawRect(Rect.fromLTWH(firePos.x - 1, bankY - 6, 2, 4), _core);
+  }
+}
+
+/// Meters and the one-line reason, drawn in ordinary colours on the art-pixel grid, after the shader.
+/// Three rows of five icons, filled or left as a dark shape: no numbers, no bars, no panel.
+class Hud extends Component {
+  Hud(this.game, this.sheet, this.widths);
+
+  final SpikeGame game;
+  final ui.Image sheet;
+  final List<int> widths;
+
+  static const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.,'!?-:";
+  static const metersTop = 10.0;
+  static const _cream = Color(0xFFFAF0D6), _ink = Color(0xFF2C2438);
+  final _paint = Paint()
+    ..filterQuality = FilterQuality.none
+    ..isAntiAlias = false;
+
+  List<String> lines = [];
+  double left = 0; // seconds the bubble stays up
+
+  /// Width of each glyph, read from the sheet: glyphs sit left-aligned in 6x6 cells from row 8 down.
+  static Future<List<int>> measure(ui.Image sheet) async {
+    final data = (await sheet.toByteData())!;
+    return [
+      for (var i = 0; i < chars.length; i++)
+        [
+          for (var x = 0; x < 6; x++)
+            for (var y = 0; y < 6; y++)
+              if (data.getUint8(((8 + i ~/ 16 * 6 + y) * sheet.width + i % 16 * 6 + x) * 4 + 3) > 0) x + 1,
+        ].fold(0, max),
+    ];
+  }
+
+  int _width(String text) => text.split('').fold(0, (w, ch) => w + (ch == ' ' ? 3 : widths[chars.indexOf(ch)] + 1)) - 1;
+
+  void say(String sentence) {
+    lines = [];
+    for (final word in sentence.split(' ')) {
+      if (lines.isNotEmpty && _width('${lines.last} $word') <= 96) {
+        lines.last = '${lines.last} $word';
+      } else {
+        lines.add(word);
+      }
+    }
+    left = 6;
+  }
+
+  @override
+  void update(double dt) => left -= dt;
+
+  @override
+  void render(Canvas canvas) {
+    canvas.save();
+    canvas.scale(game.canvasSize.x / game.viewW); // one unit is one art pixel
+    final levels = meterSets[game.hold % meterSets.length];
+    for (var m = 0; m < 3; m++) {
+      for (var i = 0; i < 5; i++) {
+        final src = Rect.fromLTWH(m * 14.0 + (i < levels[m] ? 0 : 7), 0, 7, 7);
+        canvas.drawImageRect(sheet, src, Rect.fromLTWH(4 + i * 8.0, metersTop + m * 9, 7, 7), _paint);
+      }
+    }
+    if (left > 0) {
+      _bubble(canvas);
+    }
+    canvas.restore();
+  }
+
+  /// A speech bubble above the character, kept inside the view; its tail follows the character.
+  void _bubble(Canvas canvas) {
+    final origin = game.camera.viewfinder.position;
+    final w = lines.map(_width).fold(0, max) + 8.0, h = lines.length * 7 + 5.0;
+    final tail = (112 - origin.x).clamp(8.0, game.viewW - 8);
+    final x = (tail - w / 2).floorToDouble().clamp(2.0, game.viewW - 2 - w);
+    final y = bankY - 36 - origin.y - h;
+    void box(double inset, Color colour) {
+      _paint.color = colour;
+      canvas.drawRect(Rect.fromLTWH(x + inset + 1, y + inset, w - inset * 2 - 2, h - inset * 2), _paint);
+      canvas.drawRect(Rect.fromLTWH(x + inset, y + inset + 1, w - inset * 2, h - inset * 2 - 2), _paint);
+    }
+
+    box(0, _ink);
+    box(1, _cream);
+    _paint.color = _ink;
+    canvas.drawRect(Rect.fromLTWH(tail - 2, y + h - 1, 5, 2), _paint);
+    canvas.drawRect(Rect.fromLTWH(tail - 1, y + h + 1, 3, 1), _paint);
+    canvas.drawRect(Rect.fromLTWH(tail, y + h + 2, 1, 1), _paint);
+    _paint.color = _cream;
+    canvas.drawRect(Rect.fromLTWH(tail - 1, y + h - 1, 3, 2), _paint);
+    canvas.drawRect(Rect.fromLTWH(tail, y + h + 1, 1, 1), _paint);
+    _paint.color = const Color(0xFFFFFFFF);
+    for (var l = 0; l < lines.length; l++) {
+      var cx = x + 4;
+      for (final ch in lines[l].split('')) {
+        if (ch == ' ') {
+          cx += 3;
+          continue;
+        }
+        final i = chars.indexOf(ch), gw = widths[i].toDouble();
+        final src = Rect.fromLTWH(i % 16 * 6.0, 8 + i ~/ 16 * 6.0, gw, 5);
+        canvas.drawImageRect(sheet, src, Rect.fromLTWH(cx, y + 3 + l * 7, gw, 5), _paint);
+        cx += gw + 1;
+      }
+    }
   }
 }
