@@ -140,10 +140,26 @@ for r, name in [(17, "halo1"), (11, "halo2"), (6, "sun")]:
     d.ellipse([17 - r, 17 - r, 17 + r, 17 + r], fill=far(name))
 save(sun, "sun")
 moon = Image.new("RGBA", (35, 35), (0, 0, 0, 0))
-d = ImageDraw.Draw(moon)
-d.ellipse([11, 11, 23, 23], fill=far("moon"))
-for x, y, r in [(14, 15, 1), (19, 19, 2), (20, 13, 1)]:
-    d.ellipse([x - r, y - r, x + r, y + r], fill=far("moon_shade"))
+# Drawn by hand: a computed circle this small comes out as an octagon, and computed craters as plus signs.
+MOON = [
+    "....#####....",
+    "..#########..",
+    ".###########.",
+    ".##oo#######.",
+    "###oo########",
+    "##########o##",
+    "#############",
+    "#####oo######",
+    "####ooo######",
+    ".###oo###o##.",
+    ".###########.",
+    "..#########..",
+    "....#####....",
+]
+for y, row in enumerate(MOON):
+    for x, ch in enumerate(row):
+        if ch != ".":
+            moon.putpixel((11 + x, 11 + y), far("moon" if ch == "#" else "moon_shade"))
 save(moon, "moon")
 
 # Two ridges of far hills.
