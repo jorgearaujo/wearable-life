@@ -128,8 +128,12 @@ Progress only ever moves forward; the current state shows through the weather an
 
 The weekly score is called the Mood score (named 2026-11-11).
 
-- Reflects how well the player did over the past week on Sleep, Energy and Activity, plus weekly goals.
-- Only includes things the player controls. SpO2 is not part of it; it may only adjust the day.
+- Reflects how well the player did over the past week on Sleep, Energy and Activity, plus weekly goals. It is the three meters combined, counting only what the player controls (decided 2026-11-11, to try in Phase 1; `docs/decisions/2026-11-11-scoring-rules.md`):
+  - Sleep: sleeping as long as needed, at the usual times. Sleep stages are not counted.
+  - Activity: reaching the day's target.
+  - Energy: not running out before the recommended bedtime. Where Energy started in the morning is not counted.
+- A player who meets all three every day of the week has a Mood score of 100. How easy that is in practice is to be checked on real data.
+- SpO2 is not part of it; it may only adjust the day.
 - Drives the weather (see The world).
 
 ### Level and flourishing
@@ -307,7 +311,6 @@ All health data stays on the device, read from Health Connect or HealthKit. The 
 - [x] Weekly goals: set by an admin, not by the player, and shipped inside the app (decided 2026-11-11). The goals themselves, and how they rotate from week to week, are still to be designed (deferred by the project owner, 2026-11-11). First ideas: a minimum Sleep level, reaching a step count, filling the Activity meter. Each has to be worded without internal numbers and must not depend on hidden values.
 - [x] Progress when a player changes phones: progress-only file in the system backup, for now (`docs/decisions/2026-11-11-encryption-at-rest.md`)
 - [ ] Moving progress between Android and iPhone (later; a manual transfer is the candidate)
-- [ ] How the Mood score counts Sleep and Energy without letting hidden values lower it (`docs/decisions/2026-11-11-scoring-rules.md`, questions 1 and 2)
 - [ ] Final visual style after exploring design ideas
 - [ ] Character design: original concept based on the qualities in Visual direction
 - [ ] Rendering approach: flat 2D layers (Cast n Chill) or pixel art in a 3D setting (Neko Odyssey); affects the framework choice
