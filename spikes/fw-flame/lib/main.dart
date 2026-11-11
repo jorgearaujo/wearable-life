@@ -708,8 +708,7 @@ class Dog extends Component {
     ..filterQuality = FilterQuality.none
     ..isAntiAlias = false;
 
-  double lovedAt = -10;
-  final _heart = indexPaint(40);
+  double lovedAt = -10; // the heart itself is drawn by the Hud, above the colour pass, so it can fade
 
   @override
   void render(Canvas canvas) {
@@ -719,24 +718,6 @@ class Dog extends Component {
     // A happy dog bobs up a pixel twice.
     final hop = happy && (since * 5).floor() % 4 == 1 ? 1.0 : 0.0;
     canvas.drawImageRect(sheet, Rect.fromLTWH(wag ? 24 : 0, 0, 24, 17), Rect.fromLTWH(dogX, bankY - 17 - hop, 24, 17), _paint);
-    if (happy) {
-      // A 5x4 heart that pops up over the dog's head and rises in whole pixels. It fades the pixel-art
-      // way: whole, then every other pixel, then a single dot, then gone.
-      final hx = dogX + 13, hy = bankY - 24 - (since * 8).floorToDouble();
-      if (since > 1.3) {
-        canvas.drawRect(Rect.fromLTWH(hx + 2, hy + 1, 1, 1), _heart);
-      } else {
-        const rows = ['xx.xx', 'xxxxx', '.xxx.', '..x..'];
-        final thin = since > 0.9;
-        for (var r = 0; r < 4; r++) {
-          for (var c = 0; c < 5; c++) {
-            if (rows[r][c] == 'x' && !(thin && (r + c).isOdd)) {
-              canvas.drawRect(Rect.fromLTWH(hx + c, hy + r, 1, 1), _heart);
-            }
-          }
-        }
-      }
-    }
   }
 }
 
@@ -883,6 +864,25 @@ class Hud extends Component {
     left = 6;
   }
 
+  /// The heart after petting. The scene below is palette numbers, where "half transparent" has no
+  /// meaning, so the heart is drawn up here in a real colour: it rises on whole pixels and fades out.
+  void _heart(Canvas canvas) {
+    final since = game.elapsed - game.dog.lovedAt;
+    if (since < 0 || since >= 1.6) return;
+    final fade = since < 0.4 ? 1.0 : 1 - (since - 0.4) / 1.2;
+    final paint = Paint()
+      ..color = const Color(0xFFEE8096).withValues(alpha: fade)
+      ..isAntiAlias = false;
+    final hx = dogX + 13 - game.camLeft.roundToDouble();
+    final hy = bankY - 24 - (since * 8).floorToDouble() - (worldH - game.fit.viewH);
+    const rows = ['xx.xx', 'xxxxx', '.xxx.', '..x..'];
+    for (var r = 0; r < 4; r++) {
+      for (var c = 0; c < 5; c++) {
+        if (rows[r][c] == 'x') canvas.drawRect(Rect.fromLTWH(hx + c, hy + r, 1, 1), paint);
+      }
+    }
+  }
+
   @override
   void update(double dt) => left -= dt;
 
@@ -900,6 +900,7 @@ class Hud extends Component {
     if (left > 0) {
       _bubble(canvas);
     }
+    _heart(canvas);
     canvas.restore();
   }
 
