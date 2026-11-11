@@ -253,3 +253,8 @@ Seen on the emulator: both work end to end. Limits and things real art must solv
 - The stone is 2×1 px and the rings 2 px dashes. They are readable but small; a splash frame would help.
 - The tap target for the dog is its 24×19 px box, about 1 cm on the phone. Fine for one dog; closer objects will need priorities.
 - Tap order is now: meters, moon, cabin, fire, dog, water, and anything else steps the time of day.
+
+Phone result (Pixel 7a): 60 fps, worst frame 17 ms while walking and throwing. The dog is easy to hit. Two changes after the owner's look:
+
+- **The dog answers.** When the petting ends, a small heart rises from the dog's head, and the dog keeps wagging and bobs for a moment. Without it the petting had no ending.
+- **Bigger ripples.** The stone is 2×2, each touch starts with a small splash, and the ring is a flat oval that widens in three steps (up to about 20 px across on the first touch, smaller on each skip). The water already has streaks and reflections, so a 2 px mark was lost in it.

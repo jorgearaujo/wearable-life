@@ -152,6 +152,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
   late final Hud hud;
   late final Hero hero;
   late final Stones stones;
+  late final Dog dog;
 
   /// 0 dormant (under a tarp), 1 open, 2 flourishing (flowers open). Tap the cabin to step through.
   int cabin = 1;
@@ -203,7 +204,8 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     world.addAll([tarp, flowers]);
     hero = Hero(this, await images.load('character.png'));
     stones = Stones(this);
-    world.addAll([Dog(this, await images.load('dog.png')), hero]);
+    dog = Dog(this, await images.load('dog.png'));
+    world.addAll([dog, hero]);
     world.add(Props(this));
     world.add(Wildlife(this, await images.load('duck.png'), await images.load('squirrel.png')));
     world.add(stones);
@@ -661,7 +663,10 @@ class Hero extends Component {
           x += d.sign * min(d.abs(), 30 * dt);
         }
       case Act.pet:
-        if (t > 2.4) _begin(Act.idle);
+        if (t > 2.4) {
+          _begin(Act.idle);
+          game.dog.lovedAt = game.elapsed; // the dog answers: a heart, and it stays happy for a moment
+        }
       case Act.pick:
         if (t > 0.45) _begin(Act.wind);
       case Act.wind:
@@ -703,10 +708,27 @@ class Dog extends Component {
     ..filterQuality = FilterQuality.none
     ..isAntiAlias = false;
 
+  double lovedAt = -10;
+  final _heart = indexPaint(40);
+
   @override
   void render(Canvas canvas) {
-    final wag = game.hero.act == Act.pet && (game.elapsed * 6).floor().isOdd;
-    canvas.drawImageRect(sheet, Rect.fromLTWH(wag ? 24 : 0, 0, 24, 17), const Rect.fromLTWH(dogX, bankY - 17, 24, 17), _paint);
+    final since = game.elapsed - lovedAt;
+    final happy = since < 1.6;
+    final wag = (game.hero.act == Act.pet || happy) && (game.elapsed * 6).floor().isOdd;
+    // A happy dog bobs up a pixel twice.
+    final hop = happy && (since * 5).floor() % 4 == 1 ? 1.0 : 0.0;
+    canvas.drawImageRect(sheet, Rect.fromLTWH(wag ? 24 : 0, 0, 24, 17), Rect.fromLTWH(dogX, bankY - 17 - hop, 24, 17), _paint);
+    if (happy) {
+      // A 7x6 heart that pops up over the dog's head, rises in whole pixels, and is gone.
+      final hx = dogX + 12, hy = bankY - 26 - (since * 7).floorToDouble();
+      const rows = [(1, 2, 4, 2), (0, 7, 0, 0), (0, 7, 0, 0), (1, 5, 0, 0), (2, 3, 0, 0), (3, 1, 0, 0)];
+      for (var r = 0; r < rows.length; r++) {
+        final (a, w, b, w2) = rows[r];
+        canvas.drawRect(Rect.fromLTWH(hx + a, hy + r, w.toDouble(), 1), _heart);
+        if (w2 > 0) canvas.drawRect(Rect.fromLTWH(hx + b, hy + r, w2.toDouble(), 1), _heart);
+      }
+    }
   }
 }
 
@@ -724,7 +746,7 @@ class Stones extends Component {
 
   // Each hop: from, to, height, duration. One stone at a time is enough for a toy.
   final _hops = <(Vector2, Vector2, double, double)>[];
-  final _rings = <(double, double, double)>[]; // x, y, time it appeared
+  final _rings = <(double, double, double, double)>[]; // x, y, time it appeared, widest radius
   int hop = 0;
   double t = 0;
 
@@ -744,35 +766,40 @@ class Stones extends Component {
 
   @override
   void update(double dt) {
-    _rings.removeWhere((r) => game.elapsed - r.$3 > 0.6);
+    _rings.removeWhere((r) => game.elapsed - r.$3 > 0.9);
     if (hop >= _hops.length) return;
     t += dt;
     while (hop < _hops.length && t >= _hops[hop].$4) {
       t -= _hops[hop].$4;
       final at = _hops[hop].$2;
-      _rings.add((at.x, at.y, game.elapsed));
+      _rings.add((at.x, at.y, game.elapsed, max(4.0, 10.0 - hop * 2)));
       hop++;
     }
   }
 
   @override
   void render(Canvas canvas) {
-    for (final (x, y, born) in _rings) {
+    for (final (x, y, born, widest) in _rings) {
       final age = game.elapsed - born;
-      if (age < 0.12) {
-        canvas.drawRect(Rect.fromLTWH(x - 1, y, 3, 1), _ring);
-      } else {
-        final r = age < 0.3 ? 3.0 : 5.0;
-        canvas.drawRect(Rect.fromLTWH(x - r - 1, y, 2, 1), _ring);
-        canvas.drawRect(Rect.fromLTWH(x + r, y, 2, 1), _ring);
+      if (age < 0.1) {
+        // The splash: a short column of spray where the stone touches.
+        canvas.drawRect(Rect.fromLTWH(x, y - 2, 2, 3), _ring);
+        canvas.drawRect(Rect.fromLTWH(x - 2, y, 6, 1), _ring);
+        continue;
       }
+      // A flat oval that widens in three steps: closed rows above and below, open ends on the middle row.
+      final r = (widest * (age < 0.3 ? 0.45 : age < 0.6 ? 0.75 : 1)).floorToDouble();
+      canvas.drawRect(Rect.fromLTWH(x - r + 2, y - 1, 2 * r - 2, 1), _ring);
+      canvas.drawRect(Rect.fromLTWH(x - r + 2, y + 1, 2 * r - 2, 1), _ring);
+      canvas.drawRect(Rect.fromLTWH(x - r, y, 2, 1), _ring);
+      canvas.drawRect(Rect.fromLTWH(x + r, y, 2, 1), _ring);
     }
     if (hop >= _hops.length) return;
     final (from, to, height, time) = _hops[hop];
     final s = t / time;
     final x = (from.x + (to.x - from.x) * s).floorToDouble();
     final y = (from.y + (to.y - from.y) * s - height * 4 * s * (1 - s)).floorToDouble();
-    canvas.drawRect(Rect.fromLTWH(x, y, 2, 1), y >= waterY ? _wet : _stone);
+    canvas.drawRect(Rect.fromLTWH(x, y - 1, 2, 2), y - 1 >= waterY ? _wet : _stone);
   }
 }
 
