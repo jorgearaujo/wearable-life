@@ -32,6 +32,7 @@ The full product spec is in `docs/spec.md`. Read it before starting any feature,
 - **Compare against the user's own baseline,** per data source. Never hard-code population thresholds for HRV or resting heart rate.
 - **Inject time and location.** Sun position, moon phase, season, day boundaries and bedtime all depend on them; tests must be able to set any date, time and place.
 - **Data arrives late and in batches.** Never assume last night's data exists at wake time; handle "not arrived yet" as a normal state.
+- **World state and saved progress know nothing about the visual style:** no pixel positions, palette entries or sprite names. Places are named ("at the dock"), and distances and speeds are in neutral units. Everything specific to a style (art, shaders, scaling, fonts, tap targets, text length limits) lives in the visual layer, so a different style can be tried as a second drawing layer over the same state.
 - **Visuals are built in independent layers:** sky, lighting and color grading, particles, foliage, creatures, character. Time of day and weather come from palette and lighting changes over shared art where possible.
 
 ## Working conventions

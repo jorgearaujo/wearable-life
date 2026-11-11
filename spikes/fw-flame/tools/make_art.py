@@ -13,7 +13,9 @@ import math
 import random
 from PIL import Image, ImageDraw
 
-W, H = 240, 280
+W, H = 660, 280  # five screens of 120 of land and dock, then half a screen of open water
+S = 2  # art pixels per world unit: the art is drawn twice as fine as the world's units (W, H, BANK are units)
+SKY_W = 240  # in art pixels. The sky does not scroll, so it only has to cover the widest view
 BANK, WATER = 196, 208  # top of the bank the character stands on; waterline
 random.seed(11)
 
@@ -38,6 +40,9 @@ DAY = {
     "moon": (226, 234, 244), "moon_shade": (196, 210, 230),
     "moon_dark": (126, 174, 220),  # the unlit part: a step away from the sky, so the whole disc can be made out
     "star_dim": (170, 204, 236),  # stars are drawn by the game, which decides when each one is out
+    # Added for the finer art (two art pixels per unit): shades and lights for detail.
+    "tree_dark": (30, 68, 66), "hill_snow": (228, 236, 240), "hill_shade": (116, 150, 168),
+    "bank_dark": (76, 114, 74), "roof_light": (116, 94, 116), "wall_light": (166, 122, 86), "coat_shade": (158, 72, 60),
 }
 NAMES = list(DAY)
 INDEX = {n: i + 1 for i, n in enumerate(NAMES)}
@@ -113,65 +118,117 @@ def far(name):
     return c(name, light=False)
 
 
-def save(img, name):
-    img.save(f"assets/images/{name}.png")
+def scale2x(img):
+    """Twice the size with the Scale2x rule: flat areas stay flat, diagonal edges get the finer step."""
+    w, h = img.size
+    src, out = img.load(), Image.new("RGBA", (w * 2, h * 2))
+    o = out.load()
+    for y in range(h):
+        for x in range(w):
+            p = src[x, y]
+            a, b = src[x, max(0, y - 1)], src[min(w - 1, x + 1), y]
+            cc, dd = src[max(0, x - 1), y], src[x, min(h - 1, y + 1)]
+            o[2 * x, 2 * y] = a if cc == a and cc != dd and a != b else p
+            o[2 * x + 1, 2 * y] = b if a == b and a != cc and b != dd else p
+            o[2 * x, 2 * y + 1] = cc if dd == cc and dd != b and cc != a else p
+            o[2 * x + 1, 2 * y + 1] = dd if b == dd and b != a and dd != cc else p
+    return out
 
 
-def layer():
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+def save(img, name, native=False):
+    """Pieces drawn in world units are doubled here; pieces drawn in art pixels pass native=True."""
+    (img if native else scale2x(img)).save(f"assets/images/{name}.png")
+
+
+def speckle(img, box, on, names, count, longest=2, rng=None):
+    """Scatter short one-pixel-high dashes over the pixels of one colour: texture at the fine size."""
+    rng = rng or random
+    x0, y0, x1, y1 = box
+    for _ in range(count):
+        x, y, colour = rng.randint(x0, x1), rng.randint(y0, y1), c(rng.choice(names))
+        for k in range(rng.randint(1, longest)):
+            if x + k < img.width and img.getpixel((x + k, y)) == on:
+                img.putpixel((x + k, y), colour)
+
+
+def layer(width=W):
+    img = Image.new("RGBA", (width, H), (0, 0, 0, 0))
     return img, ImageDraw.Draw(img)
 
 
-# Sky: flat bands, a few stars and clouds. The sun and moon are their own pieces (below).
-# The sky does not scroll, so everything sits in the first 120 columns.
-sky, d = layer()
-SKY_TOPS = [0, 44, 80, 112, 138]
+# Sky, in art pixels: flat bands and clouds. The sun and moon are their own pieces (below).
+sky = Image.new("RGBA", (SKY_W, H * S), (0, 0, 0, 0))
+d = ImageDraw.Draw(sky)
+SKY_TOPS = [0, 112, 172, 228, 274]
 for i, top in enumerate(SKY_TOPS):
-    d.rectangle([0, top, W, H], fill=far(f"sky{i + 1}"))
-# Each band edge is broken up over eight rows with the two colours it already has: a quarter, a half,
+    d.rectangle([0, top, SKY_W, H * S], fill=far(f"sky{i + 1}"))
+# Each band edge is broken up over twelve rows with the two colours it already has: a quarter, a half,
 # then three quarters of the lower colour. It softens the stripes and costs no palette entries.
 for i, top in enumerate(SKY_TOPS[1:]):
-    for row in range(-4, 4):
+    for row in range(-6, 6):
         y = top + row
-        for x in range(W):
+        for x in range(SKY_W):
             quarter = x % 2 == 0 and y % 2 == 0 and (x // 2 + y // 2) % 2 == 0
             half = (x + y) % 2 == 0
             lower = quarter if row < -2 else half if row < 2 else not quarter
             sky.putpixel((x, y), far(f"sky{i + 2}" if lower else f"sky{i + 1}"))
-for _ in range(16):  # the stars moved into the game; the draws stay so the rest of the art keeps its random layout
-    random.randint(2, 117), random.randint(2, 42)
-for cx, cy, w in [(26, 92, 22), (60, 120, 30), (104, 104, 14)]:
-    d.ellipse([cx - w, cy - 4, cx + w, cy + 5], fill=far("cloud_shade"))
-    d.ellipse([cx - w + 4, cy - 7, cx + w - 6, cy + 1], fill=far("cloud"))
-    d.rectangle([cx - w, cy + 3, cx + w, cy + 5], fill=far("cloud_shade"))
-save(sky, "sky")
+rs = random.Random(21)
+for cx, cy, w in [(44, 150, 36), (128, 214, 50), (196, 178, 28), (150, 118, 24), (20, 232, 30)]:
+    d.ellipse([cx - w, cy - 5, cx + w, cy + 8], fill=far("cloud_shade"))
+    for k in range(5):  # rounded tops of different heights
+        px, r = cx - w + 8 + k * (2 * w - 16) // 4, rs.randint(w // 5 + 3, w // 3 + 5)
+        d.ellipse([px - r, cy - r - 2, px + r, cy + r - 4], fill=far("cloud"))
+        d.ellipse([px - r + 3, cy + 1, px + r - 1, cy + 6], fill=far("cloud_shade"))
+    d.rectangle([cx - w + 4, cy + 6, cx + w - 4, cy + 8], fill=far("cloud_shade"))  # flat underside
+save(sky, "sky", native=True)
 
-# Sun with two flat halo rings, and a moon with no halo, each 35x35 so the game can move them.
-sun = Image.new("RGBA", (35, 35), (0, 0, 0, 0))
-d = ImageDraw.Draw(sun)
-for r, name in [(17, "halo1"), (11, "halo2"), (6, "sun")]:
-    d.ellipse([17 - r, 17 - r, 17 + r, 17 + r], fill=far(name))
-save(sun, "sun")
-# Eight phases side by side: new, waxing crescent, first quarter, waxing gibbous, full, then waning.
-moon = Image.new("RGBA", (35 * 8, 35), (0, 0, 0, 0))
-# Drawn by hand, 13 across, the same as the sun's disc without its halo: a computed circle this small
-# comes out as an octagon.
-MOON_WIDTHS = [5, 9, 11, 11, 13, 13, 13, 13, 13, 11, 11, 9, 5]
-MOON_SIZE = len(MOON_WIDTHS)
-MOON_SHADE = {(3, 3), (4, 3), (3, 4), (4, 4), (9, 5), (10, 5), (5, 8), (4, 9), (5, 9), (9, 10), (7, 2)}
+# Sun and moon, in art pixels, each in a 70x70 frame (35 units) so the game can move them.
+# Sun: a disc with a paler heart and two halo rings. Each ring ends in a thin checkered band, so the rings
+# read as glow rather than as hard plates.
+sun = Image.new("RGBA", (70, 70), (0, 0, 0, 0))
+for y in range(70):
+    for x in range(70):
+        r = math.hypot(x - 34.5, y - 34.5)
+        checker = (x + y) % 2 == 0
+        name = None
+        if r <= 7 or (r <= 9 and checker):
+            name = "star"
+        elif r <= 12.5:
+            name = "sun"
+        elif r <= 20 or (r <= 23 and checker):
+            name = "halo2"
+        elif r <= 31 or (r <= 34.5 and checker):
+            name = "halo1"
+        if name:
+            sun.putpixel((x, y), far(name))
+save(sun, "sun", native=True)
+
+# Moon: eight phases side by side: new, waxing crescent, first quarter, waxing gibbous, full, then waning.
+# A 26-pixel disc, the size of the sun's. The darker patches are our own made-up seas, plus a few small
+# craters and a shaded rim on the lower left.
+moon = Image.new("RGBA", (70 * 8, 70), (0, 0, 0, 0))
+MOON_R = 13
+MOON_SEAS = [(-5, -5, 4.2, 3.2), (-1, -8, 2.6, 1.6), (4, -2, 3.0, 2.4), (-4, 4, 3.2, 2.2), (3, 6, 2.2, 1.5), (7, 3, 1.4, 1.8)]
+MOON_CRATERS = [(8, -6), (-9, 0), (0, 2), (6, 9), (-2, 9), (1, -3), (9, -1)]
 # Where the shadow line sits in each phase, as a share of each row's half width. Crescent and gibbous are
-# pushed further from new and full than the true geometry, so they can be told apart at this size.
-MOON_EDGE = [1.0, 0.5, 0.0, -0.5, -1.0, -0.5, 0.0, 0.5]
+# pushed a little further from new and full than the true geometry, so they are easy to tell apart.
+MOON_EDGE = [1.0, 0.55, 0.0, -0.55, -1.0, -0.55, 0.0, 0.55]
 for phase in range(8):
-    for y, width in enumerate(MOON_WIDTHS):
-        for x in range((MOON_SIZE - width) // 2, (MOON_SIZE + width) // 2):
-            dx = x - MOON_SIZE // 2
-            edge = MOON_EDGE[phase] * width / 2
-            lit = dx > edge - 0.5 if phase <= 4 else dx < -edge + 0.5
+    for y in range(-MOON_R, MOON_R):
+        for x in range(-MOON_R, MOON_R):
+            fx, fy = x + 0.5, y + 0.5
+            r = math.hypot(fx, fy)
+            if r > MOON_R:
+                continue
+            edge = MOON_EDGE[phase] * math.sqrt(MOON_R * MOON_R - fy * fy)
+            lit = fx > edge if phase <= 4 else fx < -edge
+            sea = any(((fx - sx) / a) ** 2 + ((fy - sy) / b) ** 2 <= 1 for sx, sy, a, b in MOON_SEAS)
+            rim = r > MOON_R - 1.6 and fx - fy < -4 and (x + y) % 2 == 0
+            shade = sea or rim or (x, y) in MOON_CRATERS
             # The unlit part is drawn in its own dim colour, so the full disc stays visible in every phase.
-            name = ("moon_shade" if (x, y) in MOON_SHADE else "moon") if lit else "moon_dark"
-            moon.putpixel((35 * phase + 11 + x, 11 + y), far(name))
-save(moon, "moon")
+            name = ("moon_shade" if shade else "moon") if lit else "moon_dark"
+            moon.putpixel((70 * phase + 35 + x, 35 + y), far(name))
+save(moon, "moon", native=True)
 
 # Wildlife. Both reuse colours the scene already has, so they cost no palette entries.
 def creature(name, frames, colours, width, afloat=False):
@@ -227,40 +284,218 @@ creature("squirrel", [
     ["", ""] + RUN + ["...ff..ff...", ""],
 ], {"t": "coat", "b": "wall", "h": "wall", "e": "wall_shade", "f": "wall_shade", "w": "dog", "k": "log", "n": "log"}, 12)
 
-# Two ridges of far hills.
-hills, d = layer()
-for x in range(W):
-    d.line([x, 150 + int(16 * math.sin(x / 31.0) + 6 * math.sin(x / 9.0 + 2)), x, H], fill=far("hill_far"))
-for x in range(W):
-    d.line([x, 172 + int(10 * math.sin(x / 23.0 + 4) + 4 * math.sin(x / 7.0)), x, H], fill=far("hill_near"))
-save(hills, "hills")
+# Far hills, in art pixels: a ridge with mountains (snow on top, one face in shade), and a
+# nearer ridge with a ragged, wooded top. This layer moves at 0.3 of the camera, so only its left part shows.
+hills = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
+d = ImageDraw.Draw(hills)
+PEAKS = [(150, 96, 1.2), (400, 150, 1.35), (640, 120, 1.25)]  # centre, top, steepness
+for x in range(W * S):
+    y = 2 * (150 + 16 * math.sin(x / 62.0) + 6 * math.sin(x / 18.0 + 2))
+    peak = None
+    for cx, top, steep in PEAKS:
+        py = top + abs(x - cx) * steep + 5 * math.sin(x / 7.0) + 3 * math.sin(x / 3.1)
+        if py < y:
+            y, peak = py, (cx, top)
+    y = int(y)
+    d.line([x, y, x, H * S], fill=far("hill_far"))
+    if peak:
+        cx, top = peak
+        snow = top + 40 + int(10 * abs((x / 11.0) % 2 - 1)) + int(4 * math.sin(x / 3.0))
+        if y < snow:
+            d.line([x, y, x, snow], fill=far("hill_snow"))
+        if x > cx:  # the face away from the light: one flat tone, with a broken edge down the spur and below
+            deep = 76 + int(18 * math.sin(x / 9.0) + 8 * math.sin(x / 3.7))
+            for yy in range(y + 1, min(y + deep, 340)):
+                spur = cx + 0.3 * (yy - top) + 5 * math.sin(yy / 8.0) + 2 * math.sin(yy / 2.9)
+                fade = yy > y + deep - 10 and (x + yy) % 2 == 0
+                if x > spur and not fade:
+                    hills.putpixel((x, yy), far("hill_shade"))
+rh = random.Random(4)
+for x in range(W * S):
+    y = int(2 * (172 + 10 * math.sin(x / 46.0 + 4) + 4 * math.sin(x / 14.0))) - [0, 2, 5, 3, 1][x % 5] - rh.randint(0, 2)
+    d.line([x, y, x, H * S], fill=far("hill_near"))
+    if x % 5 == 2 and rh.random() < 0.6:
+        d.line([x, y - rh.randint(2, 5), x, y], fill=far("hill_near"))
+save(hills, "hills", native=True)
 
-# Trees: stacked wedges with light clusters on the sun side, a few golden ones.
-trees, d = layer()
-d.rectangle([0, 190, W, H], fill=c("tree"))
-x = 4
-while x < W:
-    h = random.randint(34, 62)
-    gold = random.random() < 0.25
-    d.rectangle([x + 6, 184, x + 7, 192], fill=c("trunk"))
-    for i in range(4):
-        half = 3 + i * 3
-        top = 190 - h + i * (h // 5)
-        d.polygon([(x + 7, top), (x + 7 - half, top + h // 3), (x + 7 + half, top + h // 3)], fill=c("tree"))
-        for _ in range(3 + i * 2):
-            px = x + 7 + random.randint(0, half - 1)
-            py = top + random.randint(h // 8, h // 3 - 1)
-            if trees.getpixel((min(W - 1, px), py))[3]:
-                d.line([px, py, px + random.randint(1, 2), py], fill=c("tree_gold" if gold else "tree_light"))
-    x += random.randint(15, 24)
-save(trees, "trees")
+# Trees, in art pixels: three kinds (open-boughed conifers, round-crowned trees, thin sparse ones) in mixed
+# sizes, some golden, with undergrowth in front and a darker row of plain shapes behind.
+trees = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
+d = ImageDraw.Draw(trees)
+# The forest stops where the land does. This layer moves at 0.6 of the camera, so its end is placed to line
+# up with the shore when the shore is mid-screen; past it there are only the hills and the water.
+FOREST_END = 342
+FLOOR = 190 * S
+d.polygon([(0, FLOOR), (FOREST_END * S, FLOOR), (FOREST_END * S + 24, WATER * S), (FOREST_END * S + 24, H * S), (0, H * S)],
+          fill=c("tree"))
+rt = random.Random(5)
 
-# The bank and a cabin (the dog is its own sprite, further down). Everything below the waterline is replaced by the reflection.
+
+GREEN = ("tree", "tree_light", "tree_dark")
+GOLD = ("tree_gold", "scarf", "wall_light")
+RUST = ("coat", "tree_gold", "coat_shade")
+FLAT = ("tree_dark", None, None)  # the row behind: shapes only
+
+
+def tput(x, y, name):
+    if 0 <= x < W * S and 0 <= y < H * S:
+        trees.putpixel((int(x), int(y)), c(name))
+
+
+def grain(x, y, salt=0):
+    """A fixed random number from 0 to 1 for a pixel."""
+    n = (int(x) * 73856093) ^ (int(y) * 19349663) ^ (salt * 83492791)
+    n = (n ^ (n >> 13)) * 1274126177 & 0x7FFFFFFF
+    return (n ^ (n >> 16)) % 1000 / 1000.0
+
+
+def clump(cx, cy, rx, ry, tones):
+    """A mass of leaves: a ragged blob, lit from the upper right in loose patches, dark underneath."""
+    body, light, dark = tones
+    for y in range(int(cy - ry - 2), int(cy + ry + 3)):
+        for x in range(int(cx - rx - 2), int(cx + rx + 3)):
+            u, v = (x - cx) / rx, (y - cy) / ry
+            r = math.hypot(u, v)
+            # The outline is broken in runs of a few pixels, so it reads as foliage and not as a disc.
+            if r > 0.86 + 0.22 * grain(x // 3, y // 2, 1):
+                continue
+            name = body
+            if light:
+                lit = (u - v * 1.3) / 1.6  # toward the upper right
+                patch = grain(x // 4, y // 3, 2)
+                if lit > 0.08 + 0.32 * patch or (lit > -0.25 and grain(x // 2, y, 3) < 0.12):
+                    name = light
+                elif lit < -0.5 + 0.25 * patch or v > 0.7:
+                    name = dark
+            tput(x, y, name)
+
+
+def trunk(x, base, top, wide, bend=0.0, plain=None):
+    """A tapering trunk with a dark side, bark marks and a flare at the foot. Returns its centre at each row."""
+    centre = {}
+    for y in range(int(top), int(base) + 7):
+        p = min(1.0, (base - y) / max(1, base - top))
+        cx = x + bend * math.sin(p * math.pi) + 0.6 * math.sin(y / 9.0 + x)
+        half = max(0.5, wide / 2 * (1 - p * 0.75)) + (max(0, 6 - (base - y)) * 0.4 if y < base else 2.5)
+        centre[y] = cx
+        for px in range(int(round(cx - half)), int(round(cx + half)) + 1):
+            name = plain or ("log" if px > cx + half * 0.25 or grain(px, y // 3, 4) < 0.12 else "trunk")
+            tput(px, y, name)
+    return centre
+
+
+def branch(x0, y0, x1, y1, name, thick=1):
+    steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
+    for k in range(steps + 1):
+        t = k / steps
+        x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t - 4 * math.sin(t * math.pi) * 0.5
+        for w in range(thick if t < 0.5 else 1):
+            tput(x, y + w, name)
+
+
+def spruce(x, h, tones):
+    """A conifer with its trunk showing: separate drooping boughs, uneven in length, with gaps between."""
+    body, light, dark = tones
+    top = FLOOR - h
+    centre = trunk(x, FLOOR, top + 4, 3 + h // 45, rt.uniform(-3, 3), None if light else body)
+    y = top + 8
+    while y < FLOOR - h * 0.16:
+        p = (y - top) / h
+        for side in (-1, 1):
+            if rt.random() < 0.12:
+                continue  # a missing bough
+            long = int((h * 0.2 + 12) * p ** 0.75 * rt.uniform(0.65, 1.15)) + 3
+            yb = y + rt.randint(-3, 3)
+            for k in range(long):
+                t = k / long
+                droop = k * 0.22 + t * t * 5
+                thick = 1.5 + 5.5 * math.sin(math.pi * min(1.0, t * 1.15) ** 0.7) * (0.6 + 0.4 * p)
+                px = int(centre.get(yb, x)) + side * k
+                lo, hi = int(yb + droop - thick * 0.45), int(yb + droop + thick * 0.55 + [0, 1, 2, 0, 3, 1][(k + yb) % 6])
+                for py in range(lo, hi + 1):
+                    name = body
+                    if light:
+                        if py >= hi - 1 and thick > 3:
+                            name = dark
+                        elif py <= lo + 1 and (side > 0 or grain(px // 2, py, 5) < 0.35):
+                            name = light
+                        elif side < 0 and grain(px // 3, py, 6) < 0.3:
+                            name = dark
+                    tput(px, py, name)
+        y += rt.randint(8, 13) + int(p * 5)
+    clump(x, top + 5, 3, 7, tones)  # the tip
+
+
+def broadleaf(x, h, tones):
+    """A round-crowned tree: a forking trunk under a crown built from overlapping clumps."""
+    top = FLOOR - h
+    wide, tall = h * rt.uniform(0.26, 0.36), h * rt.uniform(0.3, 0.4)
+    cy = top + tall
+    plain = None if tones[1] else tones[0]
+    centre = trunk(x, FLOOR, cy, 4 + h // 40, rt.uniform(-4, 4), plain)
+    for side in (-1, 1):
+        y0 = int(cy + tall * rt.uniform(0.5, 0.9))
+        branch(centre.get(y0, x), y0, x + side * wide * 0.6, cy + tall * 0.1, plain or "trunk", 2)
+    spots = [(rt.uniform(-1, 1), rt.uniform(-1, 1)) for _ in range(40)]
+    spots = sorted([sp for sp in spots if math.hypot(*sp) <= 1][:int(9 + h / 22)], key=lambda sp: -sp[1])
+    for u, v in spots:  # lowest first, so the upper clumps overlap them
+        r = rt.uniform(0.3, 0.5) * wide
+        clump(x + u * wide * 0.75, cy + v * tall * 0.75, r, r * rt.uniform(0.7, 0.95), tones)
+
+
+def sparse(x, h, tones):
+    """A thin, leaning tree with bare branches and a few small tufts of leaves left on them."""
+    top = FLOOR - h
+    plain = None if tones[1] else tones[0]
+    centre = trunk(x, FLOOR, top, 3, rt.uniform(-7, 7), plain)
+    for k in range(4 + h // 30):
+        y0 = int(top + h * rt.uniform(0.08, 0.6))
+        side = 1 if k % 2 else -1
+        long = h * rt.uniform(0.1, 0.24) * (0.5 + (y0 - top) / h)
+        x1, y1 = centre.get(y0, x) + side * long, y0 - long * rt.uniform(0.3, 0.8)
+        branch(centre.get(y0, x), y0, x1, y1, plain or "log")
+        for _ in range(rt.randint(1, 3)):
+            t = rt.uniform(0.5, 1.0)
+            r = rt.uniform(2.5, 6)
+            clump(centre.get(y0, x) + (x1 - centre.get(y0, x)) * t, y0 + (y1 - y0) * t - 2, r, r * 0.8, tones)
+    clump(centre.get(top, x), top, 5, 4, tones)
+
+
+def shrub(x, tones):
+    for _ in range(rt.randint(2, 4)):
+        r = rt.uniform(6, 13)
+        clump(x + rt.uniform(-10, 10), FLOOR - r * 0.5 + 3, r, r * 0.75, tones)
+
+
+KINDS = [(spruce, 0.5), (broadleaf, 0.8), (sparse, 1.0)]
+
+
+def plant(x, h, tones):
+    roll = rt.random()
+    next(kind for kind, share in KINDS if roll <= share)(x, h, tones)
+
+
+x = 6
+while x < FOREST_END * S - 30:
+    plant(x, rt.randint(110, 230), FLAT)
+    x += rt.randint(24, 44)
+x = 20
+while x < FOREST_END * S - 44:
+    plant(x, rt.randint(130, 300), GOLD if rt.random() < 0.25 else GREEN)
+    x += rt.randint(40, 72)
+x = 10
+while x < FOREST_END * S - 20:  # undergrowth in front of the trunks
+    shrub(x, rt.choice([GREEN, GREEN, GOLD, RUST]))
+    x += rt.randint(34, 80)
+save(trees, "trees", native=True)
+
+# The bank and a cabin (the dog is its own sprite, further down). Below the waterline the shader shows the
+# reflection instead, except where a pixel is marked as afloat.
 ground, d = layer()
 d.rectangle([0, BANK, W, H], fill=c("bank"))
 d.rectangle([0, BANK, W, BANK + 1], fill=c("bank_top"))
 d.rectangle([0, WATER - 4, W, H], fill=c("bank_face"))
-for _ in range(40):
+for _ in range(100):
     x = random.randint(0, W - 2)
     d.line([x, BANK - random.randint(1, 3), x, BANK], fill=c("tuft"))
 d.rectangle([50, BANK - 30, 96, BANK - 1], fill=c("wall"))
@@ -270,7 +505,121 @@ d.polygon([(44, BANK - 30), (73, BANK - 50), (102, BANK - 30)], fill=c("roof"))
 d.rectangle([58, BANK - 18, 67, BANK - 1], fill=c("door"))
 d.rectangle([78, BANK - 22, 88, BANK - 13], fill=c("window", light=False))
 d.line([83, BANK - 22, 83, BANK - 13], fill=c("wall_shade"))
-save(ground, "ground")
+
+# What the wider map adds, spread over the five screens. Placeholder shapes in colours the scene already has.
+def afloat(name):
+    """Below the waterline only pixels with blue set are shown; the rest is replaced by the reflection."""
+    return (INDEX[name] * 4, 255, 255, 255)
+
+
+# Screen 1, left of the cabin: the woodpile (the spec's picture of Energy), three rows of log ends.
+for row, count in enumerate([4, 3, 2]):
+    for k in range(count):
+        x, y = 10 + row * 3 + k * 6, BANK - 4 - row * 4
+        d.rectangle([x, y, x + 4, y + 3], fill=c("log"))
+        d.rectangle([x + 1, y + 1, x + 3, y + 2], fill=c("wall"))
+        d.point([x + 2, y + 1], fill=c("rope"))
+# Screen 2, right of the fire: a chopping block.
+d.rectangle([190, BANK - 6, 197, BANK - 1], fill=c("trunk"))
+d.rectangle([190, BANK - 6, 197, BANK - 6], fill=c("rope"))
+# Screen 2 to 3: two boulders.
+for left, right, tall in [(232, 256, 13), (252, 264, 7)]:
+    d.chord([left, BANK - tall, right, BANK + tall - 2], 180, 360, fill=c("tarp_shade"))
+    d.chord([left + 3, BANK - tall + 1, right - 8, BANK - 2], 180, 360, fill=c("tarp"))
+# Screen 4: one big tree on the bank, in front of the forest. The character walks in front of it.
+TREE = 430
+d.rectangle([TREE - 4, BANK - 40, TREE + 3, BANK], fill=c("trunk"))
+d.line([TREE - 4, BANK - 40, TREE - 4, BANK], fill=c("door"))
+CROWN = [(TREE, BANK - 52, 26, 16), (TREE - 10, BANK - 66, 18, 14), (TREE + 9, BANK - 72, 17, 13), (TREE, BANK - 84, 13, 10)]
+for cx, cy, rx, ry in CROWN:
+    d.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=c("tree"))
+for cx, cy, rx, ry in CROWN:  # lighter on top, so it stands out from the dark forest behind it
+    d.ellipse([cx - rx + 2, cy - ry, cx + rx - 5, cy + ry - 8], fill=c("tree_light"))
+# Screen 3: a pebble shore, the place for skipping stones.
+d.rectangle([282, BANK, 352, WATER - 1], fill=c("rope"))
+for _ in range(90):
+    x, y = random.randint(280, 353), random.randint(BANK, WATER - 2)
+    d.rectangle([x, y, x + random.randint(0, 2), y], fill=c(random.choice(["tarp", "ash", "dog_shade", "tarp_shade"])))
+# Reeds at the water's edge, between the landmarks. They stand above the waterline, so they are mirrored.
+for left in (206, 364, 474, 502):
+    for k in range(7):
+        x, tall = left + k * 2 + random.randint(0, 1), random.randint(5, 11)
+        d.line([x, WATER - 1 - tall, x, WATER - 1], fill=c("tree"))
+        if k % 2:
+            d.line([x, WATER - 2 - tall, x, WATER - tall], fill=c("trunk"))
+# Screen 5: the land ends and a low dock runs on from it, level with the bank, so the character walks
+# straight onto it. Seen from the side, with the rowing boat on the water next to it. The deck and its
+# posts are above the waterline, so the shader mirrors them like everything else.
+SHORE, DOCK_END = 530, 597
+for x in range(SHORE, W):
+    for y in range(H):
+        if y < WATER and x > SHORE + max(0, y - BANK) // 2:  # past the shore, leave only a short slope of bank
+            ground.putpixel((x, y), (0, 0, 0, 0))
+d.rectangle([SHORE - 10, BANK, DOCK_END, BANK + 2], fill=c("wall_shade"))
+d.line([SHORE - 10, BANK, DOCK_END, BANK], fill=c("wall"))
+for x in range(SHORE - 10, DOCK_END, 7):
+    d.point([x, BANK], fill=c("wall_shade"))  # gaps between the planks
+for x in range(SHORE + 4, DOCK_END, 14):
+    d.rectangle([x, BANK + 3, x + 1, WATER - 1], fill=c("trunk"))
+top = WATER + 3
+d.polygon([(558, top), (594, top), (589, top + 7), (563, top + 7)], fill=afloat("wall_shade"))
+d.line([558, top, 594, top], fill=afloat("rope"))
+d.line([563, top + 4, 589, top + 4], fill=afloat("door"))
+d.line([568, top - 3, 584, top - 1], fill=c("trunk"))  # an oar lying across it
+# Everything above was drawn in world units. Double it, then add the detail only the finer size can hold.
+ground = scale2x(ground)
+d = ImageDraw.Draw(ground)
+rg = random.Random(9)
+B2, W2 = BANK * S, WATER * S
+for _ in range(1500):  # grass blades of mixed height along the top of the bank, none on the pebbles or the dock
+    x = rg.randint(0, SHORE * S - 24)
+    if ground.getpixel((x, B2 + 1)) in (c("bank_top"), c("bank")):
+        tall = rg.choice([1, 2, 2, 3, 3, 4, 6])
+        d.line([x, B2 - tall, x, B2], fill=c(rg.choice(["tuft", "bank_top", "bank_top", "bank"])))
+speckle(ground, (0, B2 + 4, SHORE * S, W2 - 9), c("bank"), ["bank_dark", "bank_dark", "bank_top"], 2600, 3, rg)
+speckle(ground, (0, W2 - 8, SHORE * S, W2 - 1), c("bank_face"), ["log", "wall_shade"], 900, 4, rg)
+# The cabin: a lit edge on every log, log ends at the corners, shingles, a chimney, window frame, door planks.
+for y in range(BANK - 26, BANK, 6):
+    d.line([100, y * S - 1, 193, y * S - 1], fill=c("wall_light"))
+for y in range(BANK - 29, BANK - 1, 6):
+    for x in (100, 190):
+        d.rectangle([x, y * S, x + 3, y * S + 7], fill=c("wall_shade"))
+        d.rectangle([x + 1, y * S + 2, x + 2, y * S + 5], fill=c("wall_light"))
+d.rectangle([172, B2 - 96, 181, B2 - 70], fill=c("tarp_shade"))  # chimney
+d.rectangle([170, B2 - 98, 183, B2 - 95], fill=c("ash"))
+d.line([172, B2 - 86, 181, B2 - 86], fill=c("ash"))
+d.line([172, B2 - 78, 181, B2 - 78], fill=c("ash"))
+for y in range(B2 - 100, B2 - 59):
+    for x in range(88, 206):
+        if ground.getpixel((x, y)) == c("roof"):
+            row = (y - (B2 - 100)) // 6
+            if (y - (B2 - 100)) % 6 == 5 or ((x + row * 5) % 10 == 0 and (y - (B2 - 100)) % 6 < 5 and row % 1 == 0 and (x + y) % 2 == 0):
+                ground.putpixel((x, y), c("roof_light"))
+d.rectangle([155, B2 - 45, 177, B2 - 25], outline=c("wall_shade"))
+d.line([154, B2 - 24, 178, B2 - 24], fill=c("wall_light"))  # sill
+d.line([156, B2 - 35, 176, B2 - 35], fill=c("wall_shade"))
+for x in (121, 126, 131):
+    d.line([x, B2 - 36, x, B2 - 2], fill=c("log"))
+d.rectangle([116, B2 - 37, 135, B2 - 36], fill=c("log"))
+d.rectangle([131, B2 - 20, 132, B2 - 18], fill=c("scarf"))  # door handle
+# Boulders, the big tree and the pebbles get texture.
+speckle(ground, (464, B2 - 26, 530, B2), c("tarp_shade"), ["ash", "tarp"], 60, 3, rg)
+speckle(ground, (464, B2 - 26, 530, B2), c("tarp"), ["moon_shade", "tarp_shade"], 40, 2, rg)
+T2 = TREE * S
+speckle(ground, (T2 - 60, B2 - 190, T2 + 60, B2 - 60), c("tree_light"), ["tree", "tuft", "tree"], 900, 3, rg)
+speckle(ground, (T2 - 60, B2 - 190, T2 + 60, B2 - 60), c("tree"), ["tree_dark", "tree_dark", "tree_light"], 700, 3, rg)
+for x in (T2 - 5, T2 - 1, T2 + 3):
+    for y in range(B2 - 80, B2, 9):
+        d.line([x + rg.randint(-1, 1), y, x + rg.randint(-1, 1), y + rg.randint(3, 7)], fill=c("log"))
+for root in (-10, 8):  # roots
+    d.polygon([(T2 + root, B2), (T2 + root // 2, B2 - 8), (T2 + root // 2 + 3, B2)], fill=c("trunk"))
+for left in (206, 364, 474, 502):  # thin reeds among the thick ones
+    for k in range(9):
+        x, tall = left * S + rg.randint(-4, 30), rg.randint(8, 26)
+        d.line([x, W2 - 1 - tall, x, W2 - 1], fill=c(rg.choice(["tree", "tuft", "tree_light"])))
+for x in range((SHORE - 10) * S, DOCK_END * S, 14):  # plank ends on the dock
+    d.line([x, B2, x, B2 + 1], fill=c("log"))
+save(ground, "ground", native=True)
 
 # Dormant and flourishing pieces, drawn over the same cabin and bank. World position is in main.dart.
 # A tarp over the whole cabin: 66x54, placed at (40, BANK - 53).
@@ -355,38 +704,75 @@ for i, (top, rows) in enumerate(GLYPHS.values()):
         for x, ch in enumerate(row):
             if ch == "X":
                 ui.putpixel((i % 16 * 6 + x, 8 + i // 16 * 10 + top + y), INK)
-save(ui, "ui")
+save(ui, "ui", native=True)  # the game draws the meters and letters in units, so this sheet is not doubled
 print("font order:", "".join(GLYPHS))
 
 # Character: frames of 24x30 facing right, with the same frames mirrored in a second row.
-# A hat brim, a scarf tail and a hand show which way it faces; no drawn eyes.
+# A hat brim, a nose, an eye, a scarf tail and a hand show which way it faces.
 #   0-1 idle, 2-5 walk, 6-7 petting (arm out, hand moving), 8 picking something up, 9 wind-up, 10 throw
 def person(d, ox, bob=0, legs="stand", arm="down", crouch=0):
+    """Drawn in half-frame units like the first version (U), then given detail in art pixels (P)."""
+    ox *= S
     top = bob + crouch
-    d.rectangle([ox + 8, 1 + top, ox + 15, 3 + top], fill=c("hat"))
-    d.rectangle([ox + 8, 4 + top, ox + 17, 4 + top], fill=c("hat"))
-    d.rectangle([ox + 9, 5 + top, ox + 14, 9 + top], fill=c("skin"))
-    d.rectangle([ox + 8, 10 + top, ox + 15, 11 + top], fill=c("scarf"))
-    d.rectangle([ox + 7, 12 + top, ox + 16, 21 + crouch], fill=c("coat"))
-    d.rectangle([ox + 6, 11 + top, ox + 6, 15 + top], fill=c("scarf"))
+
+    def U(x0, y0, x1, y1, name):
+        d.rectangle([ox + x0 * 2, y0 * 2, ox + x1 * 2 + 1, y1 * 2 + 1], fill=c(name))
+
+    def P(x0, y0, x1, y1, name):  # y is measured from the top of the body, so details bob with it
+        d.rectangle([ox + x0, y0 + top * 2, ox + x1, y1 + top * 2], fill=c(name) if name else (0, 0, 0, 0))
+
     for a, b in {"stand": [(9, 11), (13, 15)], "stride": [(7, 9), (15, 17)], "pass": [(10, 12), (12, 14)],
                  "stride2": [(8, 10), (14, 16)]}[legs]:
-        d.rectangle([ox + a, 22 + crouch, ox + b, 29], fill=c("legs"))
+        U(a, 22 + crouch, b, 29, "legs")
+        d.rectangle([ox + a * 2, 55, ox + b * 2 + 3, 59], fill=c("log"))  # boots, toes forward
+        d.line([ox + a * 2, 44 + crouch * 2, ox + a * 2, 54], fill=c("hat"))
+    U(8, 1 + top, 15, 3 + top, "hat")
+    P(18, 0, 29, 1, "hat")  # a rounded crown
+    P(14, 8, 37, 9, "hat")  # the brim, longer in front
+    P(16, 6, 31, 7, "legs")  # hat band
+    U(9, 5 + top, 14, 9 + top, "skin")
+    P(18, 10, 19, 17, "log")  # hair at the back
+    P(30, 14, 31, 16, "skin")  # nose
+    P(26, 12, 27, 14, "legs")  # eye
+    P(22, 10, 29, 10, "log")  # the brim's shadow on the forehead
+    P(20, 10, 21, 13, "log")  # hair down to the ear
+    P(28, 18, 29, 19, None)  # chin
+    P(18, 18, 19, 19, None)
+    P(22, 17, 27, 17, "wall_light")  # shade under the cheek
+    P(16, 2, 17, 3, None)  # a rounder crown
+    P(30, 2, 31, 3, None)
+    P(18, 2, 27, 2, "legs")  # the crown's crease
+    U(7, 12 + top, 16, 21 + crouch, "coat")
+    d.rectangle([ox + 14, 24 + top * 2, ox + 16, 43 + crouch * 2], fill=c("coat_shade"))
+    d.rectangle([ox + 14, 42 + crouch * 2, ox + 33, 43 + crouch * 2], fill=c("coat_shade"))
+    P(28, 27, 29, 28, "scarf")  # buttons
+    P(28, 34, 29, 35, "scarf")
+    U(8, 10 + top, 15, 11 + top, "scarf")
+    U(6, 11 + top, 6, 15 + top, "scarf")
+    P(12, 32, 13, 34, "wall_light")  # fringe on the scarf tail
+    P(16, 22, 31, 22, "wall_light")
+    P(14, 24, 15, 25, None)  # rounded shoulders
+    P(32, 24, 33, 25, None)
+    P(18, 40, 33, 41, "log")  # belt
+    P(26, 40, 27, 41, "scarf")
     if arm == "down":
-        d.rectangle([ox + 15, 20 + top, ox + 16, 21 + top], fill=c("skin"))
+        P(26, 26, 29, 39, "coat_shade")
+        P(30, 26, 31, 39, "coat")
+        U(15, 20 + top, 16, 21 + top, "skin")
     elif arm in ("pet_up", "pet_down"):
         h = -1 if arm == "pet_up" else 0
-        d.rectangle([ox + 15, 12 + h, ox + 19, 13 + h], fill=c("coat"))
-        d.rectangle([ox + 20, 12 + h, ox + 21, 13 + h], fill=c("skin"))
+        U(15, 12 + h, 19, 13 + h, "coat")
+        d.line([ox + 30, 28 + h * 2, ox + 39, 28 + h * 2], fill=c("coat_shade"))
+        U(20, 12 + h, 21, 13 + h, "skin")
     elif arm == "pick":
-        d.rectangle([ox + 17, 17 + top, ox + 18, 22 + top], fill=c("coat"))
-        d.rectangle([ox + 17, 23 + top, ox + 18, 24 + top], fill=c("skin"))
+        U(17, 17 + top, 18, 22 + top, "coat")
+        U(17, 23 + top, 18, 24 + top, "skin")
     elif arm == "back":
-        d.rectangle([ox + 3, 10 + top, ox + 7, 11 + top], fill=c("coat"))
-        d.rectangle([ox + 2, 8 + top, ox + 3, 9 + top], fill=c("skin"))
+        U(3, 10 + top, 7, 11 + top, "coat")
+        U(2, 8 + top, 3, 9 + top, "skin")
     elif arm == "throw":
-        d.rectangle([ox + 15, 14 + top, ox + 20, 15 + top], fill=c("coat"))
-        d.rectangle([ox + 21, 14 + top, ox + 22, 15 + top], fill=c("skin"))
+        U(15, 14 + top, 20, 15 + top, "coat")
+        U(21, 14 + top, 22, 15 + top, "skin")
 
 
 POSES = [
@@ -404,27 +790,102 @@ def both_ways(sheet, width, height, count):
         sheet.paste(frame, (f * width, height))
 
 
-sheet = Image.new("RGBA", (24 * len(POSES), 60), (0, 0, 0, 0))
+sheet = Image.new("RGBA", (48 * len(POSES), 120), (0, 0, 0, 0))
 d = ImageDraw.Draw(sheet)
 for f, pose in enumerate(POSES):
     person(d, f * 24, **pose)
-both_ways(sheet, 24, 30, len(POSES))
-save(sheet, "character")
+both_ways(sheet, 48, 60, len(POSES))
+save(sheet, "character", native=True)
 
-# The dog, sitting, facing right: tail down and tail up, for wagging. 24x17 a frame.
-sheet = Image.new("RGBA", (48, 17), (0, 0, 0, 0))
+# The dog, sitting, facing right: tail down and tail up, for wagging. 48x34 art pixels a frame, drawn
+# from rounded shapes: haunch, back, chest, head, muzzle, a hanging ear, front legs and paws.
+sheet = Image.new("RGBA", (96, 34), (0, 0, 0, 0))
 d = ImageDraw.Draw(sheet)
 for f in range(2):
-    dx, dy = f * 24 + 3, 0
-    d.rectangle([dx, dy + 6, dx + 12, dy + 16], fill=c("dog"))
-    d.rectangle([dx + 8, dy, dx + 16, dy + 8], fill=c("dog"))
-    d.rectangle([dx + 15, dy + 4, dx + 19, dy + 7], fill=c("dog"))
-    d.rectangle([dx + 8, dy, dx + 10, dy + 6], fill=c("dog_shade"))
-    d.rectangle([dx, dy + 12, dx + 4, dy + 16], fill=c("dog_shade"))
-    d.point([dx + 14, dy + 3], fill=c("door"))
-    if f == 0:
-        d.rectangle([dx - 3, dy + 13, dx, dy + 15], fill=c("dog_shade"))
+    ox = f * 48
+
+    def E(x0, y0, x1, y1, name):
+        d.ellipse([ox + x0, y0, ox + x1, y1], fill=c(name))
+
+    def P(x0, y0, x1, y1, name):
+        d.rectangle([ox + x0, y0, ox + x1, y1], fill=c(name))
+
+    if f == 0:  # tail resting on the ground, or up and curled
+        P(1, 30, 9, 32, "dog_shade")
+        P(1, 28, 3, 30, "dog_shade")
+        P(1, 27, 2, 28, "dog")
     else:
-        d.rectangle([dx - 2, dy + 8, dx - 1, dy + 13], fill=c("dog_shade"))
-save(sheet, "dog")
+        P(4, 22, 6, 31, "dog_shade")
+        P(2, 16, 4, 23, "dog_shade")
+        P(3, 14, 5, 16, "dog")
+    E(5, 17, 24, 35, "dog")  # haunch
+    P(5, 30, 24, 33, "dog")
+    d.polygon([(ox + 10, 19), (ox + 26, 9), (ox + 33, 12), (ox + 33, 33), (ox + 10, 33)], fill=c("dog"))  # back and chest
+    E(24, 12, 36, 28, "dog")  # chest
+    E(6, 21, 19, 34, "dog_shade")  # the patch on the haunch
+    P(6, 31, 19, 33, "dog_shade")
+    P(12, 31, 23, 33, "dog")  # hind paw
+    P(13, 33, 23, 33, "dog_shade")
+    E(22, 0, 38, 15, "dog")  # head
+    P(34, 7, 43, 13, "dog")  # muzzle
+    P(35, 6, 41, 6, "dog")
+    P(41, 7, 43, 9, "door")  # nose
+    P(43, 7, 43, 7, "dog")
+    P(36, 13, 41, 13, "dog_shade")  # mouth
+    P(34, 4, 35, 6, "door")  # eye
+    P(34, 4, 34, 4, "moon")
+    d.polygon([(ox + 23, 3), (ox + 29, 1), (ox + 30, 10), (ox + 27, 15), (ox + 23, 13)], fill=c("dog_shade"))  # ear
+    P(27, 2, 32, 2, "moon")  # light on the top of the head
+    d.line([ox + 13, 17, ox + 23, 11], fill=c("moon"))  # light along the back
+    P(26, 16, 35, 18, "coat")  # collar
+    P(26, 19, 34, 19, "coat_shade")
+    P(31, 19, 32, 21, "scarf")  # tag
+    P(27, 20, 30, 33, "dog")  # front legs
+    P(32, 22, 35, 33, "dog")
+    P(31, 22, 31, 33, "dog_shade")
+    P(26, 22, 26, 31, "dog_shade")
+    P(27, 32, 37, 33, "dog")  # paws
+    P(27, 33, 37, 33, "dog_shade")
+    P(26, 24, 26, 28, "dog_shade")  # chest fluff
+    P(36, 20, 36, 24, "dog_shade")
+save(sheet, "dog", native=True)
+
+# The campfire, in art pixels: crossed logs, then four frames of flame, 32x40 each. The first frame is
+# the dormant one: logs under a little ash.
+sheet = Image.new("RGBA", (32 * 5, 40), (0, 0, 0, 0))
+d = ImageDraw.Draw(sheet)
+rf = random.Random(11)
+for f in range(5):
+    ox = f * 32
+    d.polygon([(ox + 4, 34), (ox + 6, 32), (ox + 27, 37), (ox + 26, 39), (ox + 5, 36)], fill=far("log"))
+    d.polygon([(ox + 27, 34), (ox + 25, 32), (ox + 4, 37), (ox + 5, 39), (ox + 26, 36)], fill=far("log"))
+    d.line([ox + 7, 33, ox + 16, 35], fill=far("trunk"))
+    d.line([ox + 24, 33, ox + 17, 35], fill=far("trunk"))
+    for sx in (3, 9, 22, 27):  # stones around it
+        d.rectangle([ox + sx, 37, ox + sx + 3, 39], fill=far("ash"))
+        d.point((ox + sx, 37), fill=(0, 0, 0, 0))
+    if f == 0:
+        d.rectangle([ox + 9, 33, ox + 22, 34], fill=far("ash"))
+        d.rectangle([ox + 12, 31, ox + 19, 32], fill=far("ash"))
+        continue
+    sway = [0, 2, 0, -2][f - 1]
+    tall = [26, 22, 28, 23][f - 1]
+    for y in range(36 - tall, 36):  # a teardrop that leans as it rises, with a paler heart
+        p = (36 - y) / tall  # 0 at the base, 1 at the tip
+        half = 9.5 * math.sin(math.pi * min(1.0, 0.18 + p * 0.82) ** 0.75) * (1 - p * 0.35)
+        cx = 15.5 + sway * p * p + 1.5 * math.sin(p * 7 + f * 1.7)
+        for x in range(32):
+            dist = abs(x + 0.5 - cx)
+            if dist <= half * 0.42 and p < 0.62:
+                sheet.putpixel((ox + x, y), far("core"))
+            elif dist <= half:
+                sheet.putpixel((ox + x, y), far("flame"))
+    # a tongue licking off to one side, and sparks
+    side = 1 if f % 2 else -1
+    for k in range(5):
+        sheet.putpixel((ox + 16 + side * (7 + k // 2), 22 - k * 2 - f % 2), far("flame"))
+        sheet.putpixel((ox + 16 + side * (7 + k // 2), 23 - k * 2 - f % 2), far("flame"))
+    for _ in range(3):
+        sheet.putpixel((ox + rf.randint(8, 23), rf.randint(1, 36 - tall - 2)), far("flame"))
+save(sheet, "fire", native=True)
 print(f"{len(NAMES)} palette entries")

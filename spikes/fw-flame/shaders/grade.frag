@@ -12,6 +12,7 @@ uniform float uDark;   // 0 by day, 1 at night: how strongly lights show
 uniform float uWaterY; // waterline in view pixels
 uniform float uStep;   // counts up 8 times a second; drives the water shimmer
 uniform float uWet;    // 0 clear, 1 rain or fog: pulls the colours down toward a cool grey
+uniform float uCamX;   // left edge of the view in the world, so the glints stay put while the view moves
 uniform vec4 uLight0;  // x, y in view pixels, radius in art pixels, strength
 uniform vec4 uLight1;
 uniform sampler2D uScene;
@@ -77,10 +78,27 @@ void main() {
 
     if (water && !afloat) {
         c = mix(c, now(WATER_TINT), 0.3 + min(0.25, depth / 160.0));
-        // Sparse bright streaks, three pixels long, that come and go.
-        float streak = hash(vec2(floor(texel.x / 3.0), texel.y) + floor(uStep / 6.0) * 0.37);
-        // Fewer of them in rain and fog, so the ripples of landing drops stand out.
-        if (streak > 0.975 + 0.02 * uWet) {
+        // Calm glints: thin dashes of mixed length. Each one lives in its own 12-pixel cell of its row,
+        // on its own slow beat (1.5 to 3.5 seconds), lit for half of it, short at the start and end of its
+        // life, and in a new spot each time. All of them drift sideways one pixel a second.
+        float wx = texel.x + uCamX - floor(uStep / 8.0) + floor(hash(vec2(texel.y, 7.0)) * 12.0);
+        vec2 cell = vec2(floor(wx / 12.0), texel.y);
+        float inCell = wx - cell.x * 12.0;
+        float period = 12.0 + floor(hash(cell) * 17.0);
+        float life = (uStep + floor(hash(cell + 0.5) * period)) / period;
+        float age = fract(life);
+        vec2 seed = cell + mod(floor(life), 64.0) * vec2(0.37, 0.11);
+        // None on the bank's own reflection and few just below it; fewer still in rain and fog, so the ripples
+        // of landing drops stand out.
+        float chance = 0.11 * clamp((depth - 3.0) / 10.0, 0.0, 1.0) * (1.0 - 0.7 * uWet);
+        float len = 1.0 + floor(pow(hash(seed + 0.3), 2.0) * 8.0);
+        float start = floor(hash(seed + 0.7) * (13.0 - len));
+        if (age < 0.08 || age > 0.42) {
+            float cut = floor(len / 2.0);
+            start += floor(cut / 2.0);
+            len -= cut;
+        }
+        if (age < 0.5 && hash(seed) < chance && inCell >= start && inCell < start + len) {
             c = now(WATER_HI);
         }
     }

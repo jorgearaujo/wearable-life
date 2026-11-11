@@ -28,21 +28,21 @@ Drafts, not submitted: `docs/store/2026-11-11-store-paperwork-drafts.md`.
 - `spikes/hc-logger` — Kotlin logger, **still collecting** on the owner's Pixel 7a. Raw pulls go to `spikes/hc-logger/data/raw/` (git-ignored, never committed).
 - `spikes/hc-bridge` — background-read test of the bridge idea, installed on the phone and collecting.
 - `spikes/fw-godot` — framework comparison, finished.
-- `spikes/fw-flame` — the visual spike. Its `README.md` has one dated section per question answered. So far: indexed palette and time-of-day shader, firelight, mirrored water, rain and fog, meters and one-line reasons, dormant and flourishing states, sun, moon and phases, readable font (75 letters max per sentence), stars, duck and squirrel, petting the dog, skipping stones, tap to walk with the camera locked on the character. Every pass ran at 60 fps, worst frame 17 ms, on the Pixel 7a. All art is our own placeholder shapes.
+- `spikes/fw-flame` — the visual spike. Its `README.md` has one dated section per question answered. So far: indexed palette and time-of-day shader, firelight, mirrored water, rain and fog, meters and one-line reasons, dormant and flourishing states, sun, moon and phases, readable font (75 letters max per sentence), stars, duck and squirrel, petting the dog, skipping stones, tap to walk with the camera locked on the character, a map five screens wide with hold-to-walk, a walking-speed switch, a side-on dock at the right end, a 216-wide view (smaller pixels, the reference's size), calmer water glints, and the art redrawn twice as large and finer for that view (2 art pixels per world unit, waterline 78% down). Every pass up to the wide map ran at 60 fps, worst frame 17 ms, on the Pixel 7a; the wide map was judged smooth by the owner, with no figure reported. All art is our own placeholder shapes.
 
 ## Waiting on something
 
 1. **Around 14 Nov 2026:** owner plugs in the phone and opens HC Bridge. Then pull (`ANDROID_SERIAL=<serial> spikes/hc-logger/scripts/pull.sh`), run `scripts/summarize.py`, read the bridge summary, and decide worker-only versus both-read in the health bridge record.
 2. **End of collection (1–2 weeks):** finish `docs/findings/2026-11-11-health-connect-data.md`; apply the remaining proposed spec changes (one HRV value per night per source, sources rewriting old records, tier from recent data, main sleep versus naps); cut an anonymized fixture into `fixtures/`; run the scoring rules over the recorded days to see where a normal week lands; tick "Data discovery" in the spec.
-3. **Owner decisions still open:** `READ_MINDFULNESS` yes or no, minimum age, developer of record (store drafts); weekly goal content; whether tap-to-walk with a character-locked camera goes into the spec as the navigation rule.
+3. **Owner decisions still open:** `READ_MINDFULNESS` yes or no, minimum age, developer of record (store drafts); weekly goal content; whether tap-to-walk with a character-locked camera goes into the spec as the navigation rule, and with it hold-to-walk.
+4. **Owner's second look at the wide map on the Pixel 7a** (installed 2026-11-11): the side-on dock at the right end with open water past it (the character is centred at the dock's end), and walking at 25 px a second (the owner's choice; its beat is uneven and it has not been seen on the phone yet). Also to judge, in the build with the redrawn art (installed 2026-11-11, later the same day): the pixel size and level of detail (not decided), the framing (water in the bottom fifth, bigger trees, higher sun and moon), the fps figure (the scene is 3.2 times as many pixels as the 120 view) and the calmer water glints. Decided so far: hold-to-walk stays, spacing waits for the final visuals, the lantern is one of the first weekly-goal items.
 
 ## Next steps, in order
 
-1. Wider map in `spikes/fw-flame` (four or five screens) to judge long walks, walking speed and how objects spread out.
-2. Drifting clouds as their own pieces.
-3. Desk research: indie games driven by wearable data; portrait composition references.
+1. Drifting clouds as their own pieces.
+2. Desk research: indie games driven by wearable data; portrait composition references.
 
-Unsettled in the Flame spike: the 13-px moon has no verdict yet; the dithered sky band edges; the real sky look is deferred to art direction.
+Unsettled in the Flame spike: the redrawn sun and moon (26-px moon with seas and craters) have no verdict yet; the dithered sky band edges; the real sky look is deferred to art direction.
 
 ## Working notes for the next session
 

@@ -288,7 +288,7 @@ Players come back to check their health and see how their habits play out, ancho
 
 Weekly goals give meaningful items right away, and each item unlocks new things to do.
 
-- Lantern: walk around at night
+- Lantern: walk around at night. One of the first items a player earns (decided 2026-11-11): at night only the cabin window and the campfire give light, so the rest of the place is dark until the lantern arrives.
 - Skis: ski in winter
 - Rake: autumn activities with the leaves
 

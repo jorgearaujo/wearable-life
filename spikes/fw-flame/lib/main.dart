@@ -10,9 +10,19 @@ import 'package:flame/post_process.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-const worldW = 240.0;
+const worldW = 660.0; // five screens of 120, then open water past the end of the dock
+const walkMax = 592.0; // the end of the dock: the map runs on, so the camera can centre the character there
 const worldH = 280.0;
-const baseW = 120.0;
+/// Art pixels across the screen: 216 is five screen pixels per art pixel on a 1080-wide phone.
+const baseW = 216.0;
+
+/// Art pixels per world unit. The world (positions, speeds, sizes in this file) is measured in units; the
+/// art is drawn twice as fine, so things keep their size on screen and gain detail. The view is 108 units
+/// across. The meters and the sentence bubble are drawn in units too, so they stay large enough to read.
+const zoom = 2.0;
+
+/// Whole art pixels only: fractional positions are what cause seams and shimmer.
+double snap(double v) => (v * zoom).floorToDouble() / zoom;
 const cycleSeconds = 40.0;
 const bankY = 196.0; // top of the bank the character stands on
 const waterY = 208.0;
@@ -66,6 +76,13 @@ const cabinReasons = [
   'The cabin is open again.',
   'A good week: the flowers by the door have opened.',
 ];
+
+/// Walking speeds to compare, in art pixels a second; tap the character to step through them. At 60
+/// frames a second 20, 30 and 60 move on an even beat (a pixel every third, second or single frame);
+/// 25, 40 and 45 do not. 25 is the project owner's choice (2026-11-11).
+const walkSpeeds = [25.0, 30.0, 20.0, 40.0, 45.0, 60.0];
+const bigTreeX = 430.0; // the lone tree on the bank; the squirrel lives around it
+
 const fireReasons = ['The fire is resting. The logs are still there.', 'The fire is lit again.'];
 
 Future<void> main() async {
@@ -123,15 +140,21 @@ class PixelFit {
       viewW = 0,
       viewH = 0,
       left = 0,
-      top = 0 {
+      top = 0,
+      viewTop = 0 {
     viewW = (physical.width / scale).floorToDouble();
-    viewH = min(worldH, (physical.height / scale).floorToDouble());
+    viewH = min(worldH * zoom, (physical.height / scale).floorToDouble());
+    // The waterline sits 78% of the way down, as in the vertical reference frames: the water is the
+    // bottom fifth, and the land, trees and sky get the rest.
+    final unitsHigh = viewH / zoom;
+    viewTop = (waterY - (unitsHigh * 0.78).roundToDouble()).clamp(0.0, worldH - unitsHigh);
     left = ((physical.width - viewW * scale) / 2).floorToDouble();
     top = ((physical.height - viewH * scale) / 2).floorToDouble();
   }
 
   final int scale;
-  double viewW, viewH, left, top;
+  double viewW, viewH, left, top; // in art pixels
+  double viewTop; // in world units
 }
 
 // ignore: deprecated_member_use
@@ -159,8 +182,14 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
   bool fireLit = true; // tap the fire
   double fireGlow = 1, windowGlow = 1;
 
+  int speed = 0; // index into walkSpeeds
+  // A finger held down on the land keeps the character walking toward it: its view column, or null.
+  double? fingerX;
+  double heldFor = 0;
+  bool handoff = false; // the hold turned into a drag: the drag carries on steering
+
   double camLeft = 60;
-  double viewW = baseW;
+  double viewW = baseW / zoom; // in world units
   double autoDir = 1;
   double sinceTouch = 10;
   double elapsed = 0;
@@ -176,44 +205,45 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
 
   @override
   Future<void> onLoad() async {
-    // Integer scaling: the largest whole number of physical pixels per art pixel that fits 120 across.
-    viewW = fit.viewW;
-    final viewH = fit.viewH;
+    // Integer scaling: the largest whole number of physical pixels per art pixel that fits the width.
+    viewW = fit.viewW / zoom;
 
+    final half = Vector2.all(1 / zoom); // art is drawn at [zoom] pixels a unit
     for (final (name, factor) in [('sky', 0.0), ('hills', 0.3), ('trees', 0.6), ('ground', 1.0)]) {
-      final layer = SpriteComponent(sprite: await loadSprite('$name.png'));
+      final layer = SpriteComponent(sprite: await loadSprite('$name.png'), scale: half);
       layers.add((layer, factor));
       world.add(layer);
       if (name == 'sky') {
         // Sun and moon sit between the sky and the hills, so they rise and set behind the ridge.
-        sun = SpriteComponent(sprite: await loadSprite('sun.png'));
+        sun = SpriteComponent(sprite: await loadSprite('sun.png'), scale: half);
         final moonSheet = await images.load('moon.png');
         moonFrames = [
-          for (var f = 0; f < 8; f++) Sprite(moonSheet, srcPosition: Vector2(35.0 * f, 0), srcSize: Vector2.all(35)),
+          for (var f = 0; f < 8; f++) Sprite(moonSheet, srcPosition: Vector2(70.0 * f, 0), srcSize: Vector2.all(70)),
         ];
-        moon = SpriteComponent(sprite: moonFrames[moonPhase]);
+        moon = SpriteComponent(sprite: moonFrames[moonPhase], scale: half);
         world.addAll([Stars(this), sun, moon]);
       }
     }
     final flowerSheet = await images.load('flowers.png');
     flowerFrames = [
-      for (var f = 0; f < 2; f++) Sprite(flowerSheet, srcPosition: Vector2(70.0 * f, 0), srcSize: Vector2(70, 8)),
+      for (var f = 0; f < 2; f++) Sprite(flowerSheet, srcPosition: Vector2(140.0 * f, 0), srcSize: Vector2(140, 16)),
     ];
-    flowers = SpriteComponent(sprite: flowerFrames[0], position: Vector2(38, bankY - 7));
-    tarp = SpriteComponent(sprite: await loadSprite('tarp.png'), position: Vector2(40, bankY - 53))..opacity = 0;
+    flowers = SpriteComponent(sprite: flowerFrames[0], position: Vector2(38, bankY - 7), scale: half);
+    tarp = SpriteComponent(sprite: await loadSprite('tarp.png'), position: Vector2(40, bankY - 53), scale: half)
+      ..opacity = 0;
     world.addAll([tarp, flowers]);
     hero = Hero(this, await images.load('character.png'));
     stones = Stones(this);
     dog = Dog(this, await images.load('dog.png'));
     world.addAll([dog, hero]);
-    world.add(Props(this));
+    world.add(Props(this, await images.load('fire.png')));
     world.add(Wildlife(this, await images.load('duck.png'), await images.load('squirrel.png')));
     world.add(stones);
 
-    camera = CameraComponent.withFixedResolution(width: viewW, height: viewH, world: world);
+    camera = CameraComponent.withFixedResolution(width: fit.viewW, height: fit.viewH, world: world);
     camera.viewfinder.anchor = Anchor.topLeft;
-    // Anchored to the bottom, so the water is always in view and a taller screen shows more sky.
-    camera.viewfinder.position = Vector2(camLeft, worldH - viewH);
+    camera.viewfinder.zoom = zoom;
+    camera.viewfinder.position = Vector2(camLeft, fit.viewTop);
     grade = GradePostProcess(program, palette);
     camera.postProcess = grade;
     // The interface is an ordinary component outside the camera, so the shader never touches it.
@@ -227,7 +257,10 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
 
   @override
   void onTapDown(TapDownInfo info) {
-    sinceTouch = 0; // a tap holds the view still for a moment, like a drag does
+    sinceTouch = 0;
+    handoff = false;
+    fingerX = null;
+    heldFor = 0;
     // canvasSize is the widget on screen; `size` is the camera's view in art pixels.
     final scale = canvasSize.x / viewW;
     final vx = info.eventPosition.widget.x / scale, vy = info.eventPosition.widget.y / scale;
@@ -239,6 +272,8 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       // The real phase comes from the date; here a tap steps through the eight drawn frames.
       moonPhase = (moonPhase + 1) % 8;
       moon.sprite = moonFrames[moonPhase];
+    } else if ((wx - hero.x).abs() < 9 && wy > bankY - 30 && wy < bankY) {
+      speed = (speed + 1) % walkSpeeds.length; // the character itself: step the walking speed
     } else if (wx > 40 && wx < 106 && wy > bankY - 53 && wy < bankY) {
       cabin = (cabin + 1) % 3;
       tarp.opacity = cabin == 0 ? 1 : 0; // all or nothing: half-transparent indices would be wrong colours
@@ -255,17 +290,51 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       final dir = wx >= hero.x ? 1.0 : -1.0;
       hero.aim = Vector2(wx.clamp(6.0, worldW - 6), wy.floorToDouble());
       hero.aimDir = dir;
-      var spot = (hero.aim.x - dir * 34).clamp(10.0, worldW - 10);
+      var spot = (hero.aim.x - dir * 34).clamp(10.0, walkMax);
       // Not on top of the dog: stand just beside it instead.
       if (spot > dogX - 10 && spot < dogX + 34) spot = spot < dogX + 12 ? dogX - 10 : dogX + 34;
       hero.go(spot, Act.pick);
     } else if (vy < skyTapBottom) {
       hold = (hold + 1) % holds.length; // the sky steps the time of day and the weather
     } else {
-      // Anywhere else: walk toward the tapped spot.
-      hero.go(wx.clamp(10.0, worldW - 10).floorToDouble(), Act.idle);
+      // Anywhere else: walk toward the tapped spot, and keep walking for as long as the finger stays down.
+      hero.go(wx.clamp(10.0, walkMax).floorToDouble(), Act.idle);
+      fingerX = vx;
     }
   }
+
+  @override
+  void onTapUp(TapUpInfo info) => _lift();
+
+  /// A short tap walks to the tapped spot. After a hold, lifting the finger stops the character where it is.
+  void _lift() {
+    if (fingerX != null && heldFor > 0.35) hero.go(hero.x.roundToDouble(), Act.idle);
+    fingerX = null;
+    handoff = false;
+  }
+
+  @override
+  void onTapCancel() {
+    // A held finger that starts to move stops being a tap and becomes a drag.
+    handoff = fingerX != null;
+    fingerX = null;
+  }
+
+  void _steer(Vector2 widget) {
+    if (handoff || fingerX != null) fingerX = widget.x / (canvasSize.x / viewW);
+  }
+
+  @override
+  void onPanStart(DragStartInfo info) => _steer(info.eventPosition.widget);
+
+  @override
+  void onPanUpdate(DragUpdateInfo info) => _steer(info.eventPosition.widget);
+
+  @override
+  void onPanEnd(DragEndInfo info) => onPanCancel();
+
+  @override
+  void onPanCancel() => _lift();
 
   @override
   void update(double dt) {
@@ -273,12 +342,19 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     elapsed += dt;
     worstMs = max(worstMs, dt * 1000.0); // frame-to-frame gap, same measure as the Godot spike
     sinceTouch += dt;
+    // A held finger stays on the same spot of the screen while the land slides under it, so the place it
+    // points at keeps moving ahead and the character keeps walking until the finger lifts.
+    if (fingerX != null) {
+      heldFor += dt;
+      final to = (camera.viewfinder.position.x + fingerX!).clamp(10.0, walkMax).floorToDouble();
+      if ((to - hero.x).abs() >= 2) hero.go(to, Act.idle);
+    }
     // Move the camera first: everything below is placed relative to it. Placed before the move, the sun,
     // the moon and the lights sat one pixel off for a frame at every camera step, which looked like shaking.
     // The camera is locked to the character, on the same whole pixel the character is drawn on, so the
     // character stays dead centre and only the landscape moves. At the ends of the map the camera stops
     // and the character walks on to the edge.
-    _pan(hero.x.floorToDouble() - viewW / 2 - camLeft);
+    _pan(snap(hero.x) - viewW / 2 - camLeft);
     final held = holds[hold].$2;
     final t = fixedTime >= 0
         ? fixedTime / 1000
@@ -328,23 +404,20 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       window = 0;
       hudText.value =
           '${fps.round()} fps  worst ${worstMs.round()} ms\n'
-          'view ${viewW.round()}x${fit.viewH.round()}  ${holds[hold].$1}\n'
-          'tap: left or right of the character to walk,\nthe dog, the water, the cabin, the fire, the sky';
+          'view ${fit.viewW.round()}x${fit.viewH.round()} px, ${viewW.round()} units  ${holds[hold].$1}\n'
+          'at ${hero.x.floor()} of ${walkMax.round()}  walking ${walkSpeeds[speed].round()} px/s\n'
+          'tap or hold: left or right of the character to walk\n'
+          'tap: the character (speed), the dog, the water,\nthe cabin, the fire, the sky';
       worstMs = 0;
     }
-  }
-
-  @override
-  void onPanUpdate(DragUpdateInfo info) {
-    // Dragging no longer moves the view: the camera belongs to the character.
   }
 
   /// Places a sky body along its arc; [s] runs 0 to 1 from rising to setting, anything else is below ground.
   void _arc(SpriteComponent body, double s, double height, double left) {
     final up = s >= 0 && s <= 1 && grade.rain < 0.5;
     body.opacity = up ? 1 : 0;
-    // Top-left of a 35 pixel sprite, on whole pixels: a centre anchor would land on half pixels.
-    body.position = Vector2(left + (92 * s).roundToDouble() - 3, (135 - sin(pi * s) * height).roundToDouble());
+    // Top-left of a 35 unit sprite, on whole art pixels: a centre anchor would land between them.
+    body.position = Vector2(left + snap((viewW - 28) * s) - 3, snap(135 - sin(pi * s) * height));
   }
 
   void _pan(double dx) {
@@ -353,11 +426,10 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       autoDir = -autoDir;
     }
     camLeft = target;
-    // Whole art pixels only: fractional positions are what cause seams and shimmer.
-    final snapped = camLeft.roundToDouble();
+    final snapped = snap(camLeft);
     camera.viewfinder.position = Vector2(snapped, camera.viewfinder.position.y);
     for (final (layer, factor) in layers) {
-      layer.x = (snapped * (1 - factor)).roundToDouble();
+      layer.x = snap(snapped * (1 - factor));
     }
   }
 }
@@ -377,13 +449,13 @@ class GradePostProcess extends PostProcess {
 
   // Fixed random sets: (x, y, speed) per rain streak and (x, y, width, drift) per fog wisp.
   static final _rng = Random(7);
-  final _streaks = List.generate(70, (_) => (_rng.nextDouble(), _rng.nextDouble(), 150 + _rng.nextDouble() * 70));
+  final _streaks = List.generate(120, (_) => (_rng.nextDouble(), _rng.nextDouble(), 150 + _rng.nextDouble() * 70));
   final _wisps = List.generate(
-    9,
-    (_) => (_rng.nextDouble(), _rng.nextDouble(), 40 + _rng.nextDouble() * 50, 2 + _rng.nextDouble() * 4),
+    11,
+    (_) => (_rng.nextDouble(), _rng.nextDouble(), 50 + _rng.nextDouble() * 60, 2 + _rng.nextDouble() * 4),
   );
 
-  /// x, y in view pixels, radius in art pixels, strength 0 to 1.
+  /// x, y and radius in world units from the view's corner, strength 0 to 1.
   final lights = [Vector4.zero(), Vector4.zero()];
 
   @override
@@ -399,14 +471,15 @@ class GradePostProcess extends PostProcess {
       rowB,
       mix,
       dark,
-      waterline,
+      waterline * zoom,
       step,
       max(rain, fog),
+      camX * zoom,
     ]) {
       shader.setFloat(i++, v);
     }
     for (final l in lights) {
-      for (final v in [l.x, l.y, l.z, l.w]) {
+      for (final v in [l.x * zoom, l.y * zoom, l.z * zoom, l.w]) {
         shader.setFloat(i++, v);
       }
     }
@@ -415,7 +488,7 @@ class GradePostProcess extends PostProcess {
       ..setImageSampler(1, palette);
     canvas.drawRect(Offset.zero & size.toSize(), Paint()..shader = shader);
     if (rain > 0 || fog > 0) {
-      _weather(canvas, size, scene.width.toDouble(), scene.height.toDouble());
+      _weather(canvas, size, scene.width / zoom, scene.height / zoom);
     }
     scene.dispose();
   }
@@ -429,22 +502,35 @@ class GradePostProcess extends PostProcess {
 
   void _weather(Canvas canvas, Vector2 size, double w, double h) {
     canvas.save();
-    canvas.scale(size.x / w, size.y / h); // from here on, one unit is one art pixel
+    canvas.scale(size.x / w, size.y / h); // from here on, one unit is one world unit
     if (fog > 0) {
       final paint = Paint()..isAntiAlias = false;
-      // A thin veil over everything, a thicker one low down, then drifting wisps that stack up.
-      canvas.drawRect(Rect.fromLTWH(0, 0, w, h), paint..color = fogColour.withValues(alpha: 0.16 * fog));
-      canvas.drawRect(
-        Rect.fromLTWH(0, waterline - 70, w, 70 + h),
-        paint..color = fogColour.withValues(alpha: 0.18 * fog),
-      );
-      paint.color = fogColour.withValues(alpha: 0.2 * fog);
-      for (final (x, y, width, drift) in _wisps) {
+      // A thin veil over everything, thickening toward the water in many faint steps, so no edge shows.
+      canvas.drawRect(Rect.fromLTWH(0, 0, w, h), paint..color = fogColour.withValues(alpha: 0.14 * fog));
+      paint.color = fogColour.withValues(alpha: 0.022 * fog);
+      for (var band = 0; band < 12; band++) {
+        final top = waterline - 96 + band * 8.0;
+        canvas.drawRect(Rect.fromLTWH(0, top, w, h - top), paint);
+      }
+      // Drifting wisps: long, thin lens shapes built from rows one art pixel tall. Each row is a little
+      // shorter and shifted from the last, so the ends taper and the edges are broken, not boxes.
+      paint.color = fogColour.withValues(alpha: 0.13 * fog);
+      for (var n = 0; n < _wisps.length; n++) {
+        final (x, y, width, drift) = _wisps[n];
         final span = w + width;
-        final left = ((x * span + elapsed * drift - camX * 0.8) % span - width).floorToDouble();
-        final top = (waterline - 78 + y * 84).floorToDouble();
-        canvas.drawRect(Rect.fromLTWH(left, top, width, 5), paint);
-        canvas.drawRect(Rect.fromLTWH(left + 6, top - 2, width - 16, 9), paint);
+        final left = (x * span + elapsed * drift - camX * 0.8) % span - width;
+        final mid = snap(waterline - 84 + y * 92);
+        final rows = 5 + n % 4 * 2; // rows above and below the middle
+        for (var r = -rows; r <= rows; r++) {
+          final thin = 1 - (r / (rows + 1)) * (r / (rows + 1));
+          final long = width * thin;
+          final shift = (_hash(n, r + 50) - 0.5) * width * 0.18;
+          canvas.drawRect(Rect.fromLTWH(snap(left + (width - long) / 2 + shift), mid + r / zoom, snap(long), 1 / zoom), paint);
+          // A second, shorter layer through the middle makes the heart of the wisp denser.
+          if (r.abs() < rows ~/ 2) {
+            canvas.drawRect(Rect.fromLTWH(snap(left + width * 0.3 + shift), mid + r / zoom, snap(long * 0.4), 1 / zoom), paint);
+          }
+        }
       }
     }
     if (rain > 0) {
@@ -452,16 +538,17 @@ class GradePostProcess extends PostProcess {
         ..isAntiAlias = false
         ..color = rainColour.withValues(alpha: 0.38 * rain);
       for (final (x, y, speed) in _streaks) {
-        // Fine slanted streaks: five pixels tall, one wide, stepping left once on the way down.
-        final py = ((y * (h + 8) + elapsed * speed) % (h + 8) - 8).floorToDouble();
-        final px = ((x * w - py * 0.25 - camX) % w).floorToDouble();
-        canvas.drawRect(Rect.fromLTWH(px, py, 1, 3), paint);
-        canvas.drawRect(Rect.fromLTWH(px - 1, py + 3, 1, 2), paint);
+        // Fine slanted streaks, one art pixel wide and nine tall, stepping left twice on the way down.
+        final py = snap((y * (h + 8) + elapsed * speed) % (h + 8) - 8);
+        final px = snap((x * w - py * 0.25 - camX) % w);
+        canvas.drawRect(Rect.fromLTWH(px, py, 0.5, 1.5), paint);
+        canvas.drawRect(Rect.fromLTWH(px - 0.5, py + 1.5, 0.5, 1.5), paint);
+        canvas.drawRect(Rect.fromLTWH(px - 1, py + 3, 0.5, 1.5), paint);
       }
       // Drops landing on the water: a bright dot, then a flat ring that widens and fades in three more steps.
       // Each ripple picks a new spot every time it restarts; spots are fixed to the world, not the screen.
       const life = 0.48;
-      for (var i = 0; i < 30; i++) {
+      for (var i = 0; i < 75; i++) {
         final phase = elapsed / life + i * 0.37;
         final cycle = phase.floor();
         final stage = ((phase - cycle) * 4).floor();
@@ -472,14 +559,15 @@ class GradePostProcess extends PostProcess {
         }
         paint.color = rainColour.withValues(alpha: const [0.9, 0.7, 0.45, 0.22][stage] * rain);
         if (stage == 0) {
-          canvas.drawRect(Rect.fromLTWH(x, y - 1, 1, 2), paint);
+          canvas.drawRect(Rect.fromLTWH(x, y - 0.5, 0.5, 1), paint);
         } else {
           // A flat ellipse outline: top and bottom arcs, one pixel at each side.
           final reach = stage * 2.0;
-          canvas.drawRect(Rect.fromLTWH(x - reach + 1, y - 1, reach * 2 - 1, 1), paint);
-          canvas.drawRect(Rect.fromLTWH(x - reach + 1, y + 1, reach * 2 - 1, 1), paint);
-          canvas.drawRect(Rect.fromLTWH(x - reach, y, 1, 1), paint);
-          canvas.drawRect(Rect.fromLTWH(x + reach, y, 1, 1), paint);
+          // Lines one art pixel thick.
+          canvas.drawRect(Rect.fromLTWH(x - reach + 0.5, y - 0.5, reach * 2 - 0.5, 0.5), paint);
+          canvas.drawRect(Rect.fromLTWH(x - reach + 0.5, y + 0.5, reach * 2 - 0.5, 0.5), paint);
+          canvas.drawRect(Rect.fromLTWH(x - reach, y, 0.5, 0.5), paint);
+          canvas.drawRect(Rect.fromLTWH(x + reach, y, 0.5, 0.5), paint);
         }
       }
     }
@@ -499,15 +587,25 @@ double _noise(int a, int b) => (sin(a * 12.9898 + b * 78.233) * 43758.5453).abs(
 class Stars extends Component {
   Stars(this.game) {
     final rng = Random(5);
-    while (_stars.length < 34) {
+    final top = game.fit.viewTop.toInt();
+    const count = 44;
+    while (_stars.length < count) {
       // More of them toward the top; none low enough to sit on the clouds.
-      final x = 3 + rng.nextInt(114), y = 16 + (70 * pow(rng.nextDouble(), 1.4)).floor();
+      final x = 3 + rng.nextInt(game.viewW.toInt() - 6), y = top + 4 + (80 * pow(rng.nextDouble(), 1.4)).floor();
       if (_stars.any((s) => (s.$1 - x).abs() < 6 && (s.$2 - y).abs() < 6)) {
         continue;
       }
       final n = _stars.length;
-      final kind = n < 4 ? 2 : n < 15 ? 1 : 0; // 2 a cross, 1 bright, 0 dim
-      final out = kind == 2 ? 0.3 + 0.05 * n : kind == 1 ? 0.45 + 0.02 * n : 0.62 + 0.017 * (n - 15);
+      final kind = n < 4
+          ? 2
+          : n < 15
+          ? 1
+          : 0; // 2 a cross, 1 bright, 0 dim
+      final out = kind == 2
+          ? 0.3 + 0.05 * n
+          : kind == 1
+          ? 0.45 + 0.02 * n
+          : 0.62 + 0.32 * (n - 15) / (count - 15);
       _stars.add((x, y, kind, out));
     }
   }
@@ -530,7 +628,9 @@ class Stars extends Component {
         continue;
       }
       final blink = _noise(i, beat) > 0.9;
-      void dot(int dx, int dy, Paint paint) => canvas.drawRect(Rect.fromLTWH(left + x + dx, y + dy + 0.0, 1, 1), paint);
+      // One art pixel each, so half a unit.
+      void dot(int dx, int dy, Paint paint) =>
+          canvas.drawRect(Rect.fromLTWH(left + x + dx / zoom, y + dy / zoom, 1 / zoom, 1 / zoom), paint);
       if (kind == 0) {
         if (!blink) dot(0, 0, _dim);
       } else {
@@ -557,9 +657,9 @@ class Wildlife extends Component {
     ..filterQuality = FilterQuality.none
     ..isAntiAlias = false;
 
-  double duckX = 60, duckDir = 1;
-  double squirrelX = 205, squirrelTo = 205, pause = 1.5;
-  bool squirrelLeft = false;
+  double duckX = 200, duckDir = 1;
+  double squirrelX = bigTreeX + 25, squirrelTo = bigTreeX + 25, pause = 1.5;
+  bool squirrelLeft = false, away = false;
 
   @override
   void update(double dt) {
@@ -568,21 +668,22 @@ class Wildlife extends Component {
     if (duckX < 8 || duckX > worldW - 20) {
       duckDir = -duckDir;
     }
-    // The squirrel dashes, stops and sits up. At night and in rain it goes off to the right and stays away:
+    // The squirrel dashes, stops and sits up. At night and in rain it runs to the big tree and stays up it:
     // hidden, not gone.
-    final away = game.grade.dark > 0.7 || game.grade.rain > 0.5;
+    final wasAway = away;
+    away = game.grade.dark > 0.7 || game.grade.rain > 0.5;
     if (away) {
-      squirrelTo = worldW + 14;
+      squirrelTo = bigTreeX;
       pause = 0;
-    } else if (squirrelTo > worldW) {
-      squirrelTo = 200;
+    } else if (wasAway) {
+      squirrelTo = bigTreeX + 20;
     }
     if (pause > 0) {
       pause -= dt;
     } else if ((squirrelTo - squirrelX).abs() < 1) {
       if (!away) {
         pause = 1 + _rng.nextDouble() * 2.5;
-        squirrelTo = 180 + _rng.nextDouble() * 52;
+        squirrelTo = bigTreeX - 28 + _rng.nextDouble() * 66;
       }
     } else {
       squirrelLeft = squirrelTo < squirrelX;
@@ -595,16 +696,17 @@ class Wildlife extends Component {
     final beat = (game.elapsed * 2).floor();
     canvas.drawImageRect(
       duck,
-      Rect.fromLTWH(beat.isEven ? 0 : 12, duckDir > 0 ? 0 : 8, 12, 8),
-      Rect.fromLTWH(duckX.floorToDouble(), waterY + 30, 12, 8),
+      Rect.fromLTWH(beat.isEven ? 0 : 24, duckDir > 0 ? 0 : 16, 24, 16),
+      Rect.fromLTWH(snap(duckX), waterY + 30, 12, 8),
       _paint,
     );
     final moving = pause <= 0 && (squirrelTo - squirrelX).abs() >= 1;
+    if (away && !moving) return; // up the tree
     final frame = moving ? 2 + (game.elapsed * 8).floor() % 2 : (beat % 5 == 0 ? 1 : 0);
     canvas.drawImageRect(
       squirrel,
-      Rect.fromLTWH(frame * 12.0, squirrelLeft ? 10 : 0, 12, 10),
-      Rect.fromLTWH(squirrelX.floorToDouble() - 6, bankY - 10, 12, 10),
+      Rect.fromLTWH(frame * 24.0, squirrelLeft ? 20 : 0, 24, 20),
+      Rect.fromLTWH(snap(squirrelX) - 6, bankY - 10, 12, 10),
       _paint,
     );
   }
@@ -660,7 +762,7 @@ class Hero extends Component {
           _begin(next);
         } else {
           left = d < 0;
-          x += d.sign * min(d.abs(), 30 * dt);
+          x += d.sign * min(d.abs(), walkSpeeds[game.speed] * dt);
         }
       case Act.pet:
         if (t > 2.4) {
@@ -691,8 +793,8 @@ class Hero extends Component {
     };
     canvas.drawImageRect(
       sheet,
-      Rect.fromLTWH(frame * 24.0, left ? 30 : 0, 24, 30),
-      Rect.fromLTWH(x.floorToDouble() - 12, bankY - 30, 24, 30),
+      Rect.fromLTWH(frame * 48.0, left ? 60 : 0, 48, 60),
+      Rect.fromLTWH(snap(x) - 12, bankY - 30, 24, 30),
       _paint,
     );
   }
@@ -717,7 +819,12 @@ class Dog extends Component {
     final wag = (game.hero.act == Act.pet || happy) && (game.elapsed * 6).floor().isOdd;
     // A happy dog bobs up a pixel twice.
     final hop = happy && (since * 5).floor() % 4 == 1 ? 1.0 : 0.0;
-    canvas.drawImageRect(sheet, Rect.fromLTWH(wag ? 24 : 0, 0, 24, 17), Rect.fromLTWH(dogX, bankY - 17 - hop, 24, 17), _paint);
+    canvas.drawImageRect(
+      sheet,
+      Rect.fromLTWH(wag ? 48 : 0, 0, 48, 34),
+      Rect.fromLTWH(dogX, bankY - 17 - hop, 24, 17),
+      _paint,
+    );
   }
 }
 
@@ -777,7 +884,14 @@ class Stones extends Component {
         continue;
       }
       // A flat oval that widens in three steps: closed rows above and below, open ends on the middle row.
-      final r = (widest * (age < 0.3 ? 0.45 : age < 0.6 ? 0.75 : 1)).floorToDouble();
+      final r =
+          (widest *
+                  (age < 0.3
+                      ? 0.45
+                      : age < 0.6
+                      ? 0.75
+                      : 1))
+              .floorToDouble();
       canvas.drawRect(Rect.fromLTWH(x - r + 2, y - 1, 2 * r - 2, 1), _ring);
       canvas.drawRect(Rect.fromLTWH(x - r + 2, y + 1, 2 * r - 2, 1), _ring);
       canvas.drawRect(Rect.fromLTWH(x - r, y, 2, 1), _ring);
@@ -793,27 +907,23 @@ class Stones extends Component {
 }
 
 class Props extends Component {
-  Props(this.game);
+  Props(this.game, this.sheet);
 
   final SpikeGame game;
-
-  static Paint _index(int index) => Paint()
-    ..color = Color.fromARGB(255, index * 4, 0, 0)
+  final ui.Image sheet; // frame 0 is the dormant fire (logs under ash), 1 to 4 are the flame
+  final _paint = Paint()
+    ..filterQuality = FilterQuality.none
     ..isAntiAlias = false;
-  final _log = _index(34), _flame = _index(35), _core = _index(36), _ash = _index(42);
 
   @override
   void render(Canvas canvas) {
-    canvas.drawRect(Rect.fromLTWH(firePos.x - 6, bankY - 2, 12, 2), _log);
-    if (!game.fireLit) {
-      // Dormant: the logs stay, under a little ash.
-      canvas.drawRect(Rect.fromLTWH(firePos.x - 4, bankY - 3, 8, 1), _ash);
-      canvas.drawRect(Rect.fromLTWH(firePos.x - 2, bankY - 4, 4, 1), _ash);
-      return;
-    }
-    final tall = (game.elapsed * 8).floor().isEven ? 8.0 : 6.0;
-    canvas.drawRect(Rect.fromLTWH(firePos.x - 3, bankY - 2 - tall, 6, tall), _flame);
-    canvas.drawRect(Rect.fromLTWH(firePos.x - 1, bankY - 6, 2, 4), _core);
+    final frame = game.fireLit ? 1 + (game.elapsed * 8).floor() % 4 : 0;
+    canvas.drawImageRect(
+      sheet,
+      Rect.fromLTWH(frame * 32.0, 0, 32, 40),
+      Rect.fromLTWH(firePos.x - 8, bankY - 20, 16, 20),
+      _paint,
+    );
   }
 }
 
@@ -827,7 +937,7 @@ class Hud extends Component {
   final List<int> widths;
 
   static const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,'!?-:";
-  static const wrap = 104, pitch = 10.0; // widest line of text and distance between lines, in art pixels
+  static const wrap = 94, pitch = 10.0; // widest line of text and distance between lines, in art pixels
   static const metersTop = 10.0;
   static const _cream = Color(0xFFFAF0D6), _ink = Color(0xFF2C2438);
   final _paint = Paint()
@@ -873,8 +983,8 @@ class Hud extends Component {
     final paint = Paint()
       ..color = const Color(0xFFEE8096).withValues(alpha: fade)
       ..isAntiAlias = false;
-    final hx = dogX + 13 - game.camLeft.roundToDouble();
-    final hy = bankY - 24 - (since * 8).floorToDouble() - (worldH - game.fit.viewH);
+    final hx = dogX + 13 - snap(game.camLeft);
+    final hy = bankY - 24 - (since * 8).floorToDouble() - game.fit.viewTop;
     const rows = ['xx.xx', 'xxxxx', '.xxx.', '..x..'];
     for (var r = 0; r < 4; r++) {
       for (var c = 0; c < 5; c++) {
@@ -908,7 +1018,7 @@ class Hud extends Component {
   void _bubble(Canvas canvas) {
     final origin = game.camera.viewfinder.position;
     final w = lines.map(_width).fold(0, max) + 8.0, h = lines.length * pitch + 5;
-    final tail = (game.hero.x.floorToDouble() - origin.x).clamp(8.0, game.viewW - 8);
+    final tail = (snap(game.hero.x) - origin.x).floorToDouble().clamp(8.0, game.viewW - 8);
     final x = (tail - w / 2).floorToDouble().clamp(2.0, game.viewW - 2 - w);
     final y = bankY - 36 - origin.y - h;
     void box(double inset, Color colour) {

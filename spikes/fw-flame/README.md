@@ -271,3 +271,108 @@ Question: if the player moves the character by tapping to its left or right and 
 - At 30 px a second and 60 frames a second the ground moves one art pixel every second frame, an even beat. Speeds that do not divide evenly (say 25 px/s) would give an uneven beat and visible stutter; worth a test before a walking speed is fixed.
 
 Limit: the placeholder map is 240 px wide and the view 120, so the camera only travels 120 px (4 seconds end to end). A proper judgement of long walks needs a wider map.
+
+## A wider map: five screens (2026-11-11)
+
+Question: on a map four or five screens wide, how do long walks feel, which walking speed works, and how far apart should things be?
+
+**Judged on the Pixel 7a by the project owner (2026-11-11): the landscape slides smoothly on a long hold at every speed tried, and hold-to-walk feels right.** The owner's results are at the end of this section. The frame-rate figure was not reported.
+
+- **The map is 660 art pixels wide** (it was 240): five screens of 120 that the character can walk, then half a screen of open water. The character stops at the end of the dock (592); the extra water lets the camera keep it centred there, looking out over the lake. The forest layer stops where the land does, so past the shore there are only the hills and the water. Only the art got wider: the scene is still drawn once at view size, so the cost per frame should not change.
+- **What is on it,** left to right. Everything new is a placeholder shape in colours the scene already had (still 46 palette entries):
+
+| Screen | Art pixels | What is there |
+| --- | --- | --- |
+| 1 | 0–120 | Woodpile (10–36), cabin and flowers (44–102) |
+| 2 | 120–240 | Dog (125), campfire (166), chopping block (190), reeds, boulders (232–264) |
+| 3 | 240–360 | Pebble shore (282–352) |
+| 4 | 360–480 | Reeds, one big tree on the bank (430) with the squirrel around it |
+| 5 | 480–600 | Reeds, the land ends (530) and a dock runs on to the edge of the map, with the rowing boat next to it |
+
+- **Hold to keep walking.** A tap still walks to the tapped spot. A finger held down on the land keeps the character walking toward it; sliding the finger to the other side turns it round; lifting the finger stops it where it is. Without this a long walk is a tap every two seconds, because a tap can reach at most half a screen (60 pixels) ahead.
+- **Walking speed can be stepped** by tapping the character: 25, 30, 20, 40, 45, 60 art pixels a second (25 was added, and made the starting speed, after the owner's look). The debug text shows the speed and where the character is on the map.
+
+| Speed | End to end | Beat at 60 frames a second |
+| --- | --- | --- |
+| 20 | 29 s | even: one pixel every third frame |
+| 25 | 23 s | uneven: five pixels every twelve frames |
+| 30 | 19 s | even: every second frame |
+| 40 | 15 s | uneven: two frames move, one does not |
+| 45 | 13 s | uneven: three frames move, one does not |
+| 60 | 10 s | even: every frame |
+
+- **The dock is seen from the side,** at the right end of the map, where the land stops: a low deck on posts, level with the bank, so the character walks straight onto it with no code. Deck and posts are above the waterline, so they are mirrored like everything else. The boat sits on the water next to it with the same "afloat" flag as the duck. (The first version was a jetty in the middle of the map pointing toward the viewer; the owner did not like it.)
+- **The squirrel hides up the big tree** at night and in rain (it used to run off the edge of the map), and comes back down.
+- Rain ripples went from 30 to 75 at a time, to keep the same number in view on the wider water.
+
+Questions for the phone, answered below:
+
+1. Does the landscape slide smoothly on a long hold, at each speed? Do 40 and 45 stutter?
+2. Which speed feels right for a calm game, and is 19 seconds end to end too long at 30?
+3. Are the things too far apart or too close? Screens 3 and 5 are nearly empty land.
+4. Does hold-to-walk feel right, and should lifting the finger stop the character at once?
+
+Limits found:
+
+- **Only two lights, both at the left end.** At night the three screens to the right have no warm light at all. More lights mean more shader inputs or a small light texture (already noted in the lighting section).
+- The bank is flat and at one height for the whole map. Slopes would need the character's height to follow the ground.
+- The new things are scenery: the woodpile, block, dock and boat cannot be tapped.
+- The boat has no reflection of its own; it covers the reflection behind it.
+- The forest's end is placed for one camera position. It moves slower than the land, so it only lines up with the shore when the shore is mid-screen.
+- The far layers repeat nothing and have no landmarks of their own, so the hills give little sense of where on the map the character is.
+- The sky, sun and moon do not scroll, so a walk east never changes where the sun is. Right for a real sky.
+
+Project owner's look on the Pixel 7a (2026-11-11):
+
+1. Smooth at each speed, the uneven ones included.
+2. **Walking speed: 25 art pixels a second.** It was not among the speeds tried and its beat is uneven, so it is in the build now for a second look.
+3. Spacing is left for the final visuals; the placeholder landscape is not tuned further. The dock was moved and turned side-on (above).
+4. Hold-to-walk stays, with the character stopping when the finger lifts.
+5. The dark right-hand screens at night are wanted: they are what the lantern is for, so the lantern should be one of the first items a weekly goal gives (now in `docs/spec.md`).
+
+## Smaller pixels and calmer water glints (2026-11-11)
+
+**Question:** the reference stills look finer than the spike. What does the place look like at the reference's pixel size, and with water glints like the reference's?
+
+**Pixel size.** The view is now 216 art pixels across (5 screen pixels each on a 1080-wide phone, the reference's size at 1080p) in place of 120 (9 each). `--dart-define=VIEW_W=120` brings the earlier view back for comparison.
+
+- On a 1080 × 2400 screen the view is 216 × 480, taller than the 280 rows of art. The waterline sits 62% of the way down; the sky image has 200 extra rows above the art, and the rows below it are plain water (all mirror).
+- Stars, rain and ripples are spread over the bigger view at the same density; the sun and moon cross the full width.
+- Nothing was redrawn: the same placeholder art, so the scene looks emptier and the character, the meters and the sentences are all smaller on screen. That is expected, and it is the thing to judge.
+
+**Glints.** Measured in `docs/references/animation/anim-fog-idle-life.gif`: dashes one pixel tall, 1 to about 9 long, covering about 1.4% of the water; about 70% are still lit after 0.4 s and 35% after 1 s; a slight sideways drift. The spike's old ones were all 3 long, covered 2.5% and all changed at once every 0.75 s.
+
+Now in `shaders/grade.frag`: each dash has its own 12-pixel cell of its row and its own beat of 1.5 to 3.5 s, is lit for half of it, is shorter at the start and end of its life, and comes back in a new spot. Lengths are 1 to 8, mostly short. All drift one pixel a second. They are fixed to the world, not the screen, so they stay put while the view moves. None on the bank's own reflection; fewer in rain and fog.
+
+**Checked:** emulator only (daytime hold): the view is 216 × 480, the layout holds, the glints differ between two captures a second apart. The emulator ran at 8 to 10 fps (it ran the 120 view at about 15), so the phone's figure matters here: the scene is 3.2 times as many art pixels.
+
+**Not checked:** night, rain and fog at this size; the phone.
+
+**Waiting on the owner:** pixel size verdict (and the fps reading), glints verdict.
+
+## Bigger, finer art at the same pixel size (2026-11-11)
+
+**Question:** the 216-wide view looked like the old scene zoomed out, not like more detail. What does the vertical reference actually do?
+
+**Answer:** `docs/references/vertical-framing/framing-cabin-dock.png` is about 122 art pixels across, the same count as our earlier 120 view. Its richness comes from large, detailed art: the character is about 11% of the screen height, trees fill half the screen, and the waterline sits 77 to 80% of the way down. So smaller pixels only help if everything is drawn bigger with them.
+
+**What changed:**
+
+- The world is measured in units; the art is drawn at 2 art pixels a unit (`zoom` in `lib/main.dart`, `S` in `tools/make_art.py`). The view is 216 art pixels, 108 units, across. Positions, speeds and tap targets stay in units, so nothing in the game logic moved.
+- Redrawn at the finer size: sky, sun, hills (snow-capped peaks), trees (tall tiered conifers, a darker back row), ground detail (grass, cabin logs, shingles, window, door, bark, reeds, dock), character (48×60) and dog (48×34).
+- The waterline is 78% of the way down; the sun and moon arcs now peak near the top of the view.
+
+Later the same day the sun and moon were redrawn at the finer size too: the sun has a paler heart and checkered edges on its halo rings; the moon is a 26-pixel disc with made-up seas, small craters, a shaded rim and a curved shadow line in each phase.
+
+A second pass the same day, after looking at every state on the emulator:
+
+- Trees: three kinds in mixed sizes (conifers with separate drooping boughs and the trunk showing, round-crowned trees built from leaf clumps, thin sparse trees with bare branches), some golden, with green, gold and rust undergrowth in front. Trunks taper, bend a little, have a dark side, bark marks and a flare at the foot. This followed the owner's note that the first redraw (regular tiers) was too literal and all one shape.
+- Mountains: the shaded face is one flat tone with a broken edge, in place of diagonal hatching.
+- Fog: a veil that thickens toward the water in twelve faint steps, and wisps built from rows one art pixel tall with tapered ends, in place of translucent boxes.
+- Campfire: its own sheet (`fire.png`), crossed logs and stones, four flame frames with a paler heart and sparks; the first frame is the dormant fire.
+- Dog: drawn from rounded shapes (haunch, chest, head, hanging ear, paws). Character: an eye, hair, a rounder hat, rounded shoulders, a belt.
+- Rain streaks and ripples are one art pixel thick, with 120 streaks in place of 70.
+
+**Limits, all placeholder shortcuts:** the duck, squirrel, tarp and flowers are the old drawings doubled with Scale2x; the meters and the sentence bubble are still in whole units (2-pixel blocks); the big tree on the bank, the boulders and the firelight rings are untouched.
+
+**Evidence:** emulator, release build: day, dusk and rain render correctly, the mirror, walking and taps work; 10 fps there (the emulator did 8 to 10 at the previous 216 view, so no change). No Pixel 7a figure yet.
