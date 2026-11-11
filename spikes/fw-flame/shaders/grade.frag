@@ -2,7 +2,7 @@
 #include <flutter/runtime_effect.glsl>
 
 // Second pass: the scene image holds palette indices, not colours (see tools/make_art.py).
-//   red = index * 4, green = 1 where firelight may reach.
+//   red = index * 4, green = 1 where firelight may reach, blue = 1 where it floats on the water.
 // The palette image has one row per time of day and one row of firelit colours, so night and dusk are
 // full re-colourings, not a tint over the day art. Below the waterline the scene is mirrored.
 uniform vec2 uSize;    // size of the drawn rectangle
@@ -58,7 +58,14 @@ void main() {
         src = clamp(src, vec2(0.0), uTexels - 1.0);
     }
 
-    vec4 s = texture(uScene, (src + 0.5) / uTexels);
+    // Anything drawn below the waterline with blue set floats on the water (a duck): it is shown as it is,
+    // in place of the reflection.
+    vec4 own = texture(uScene, (texel + 0.5) / uTexels);
+    bool afloat = water && own.b > 0.5;
+    if (afloat) {
+        src = texel;
+    }
+    vec4 s = afloat ? own : texture(uScene, (src + 0.5) / uTexels);
     float index = floor(s.r * 255.0 / 4.0 + 0.5);
     vec3 c = now(index);
     // Weather mutes the scene before the lights are added, so firelight stays warm in rain. Real art would use hand-picked wet palette rows instead.
@@ -68,7 +75,7 @@ void main() {
     float g = min(1.0, glow(uLight0, src) + glow(uLight1, src)) * uDark * step(0.5, s.g);
     c = mix(c, pal(index, LIT_ROW), g);
 
-    if (water) {
+    if (water && !afloat) {
         c = mix(c, now(WATER_TINT), 0.3 + min(0.25, depth / 160.0));
         // Sparse bright streaks, three pixels long, that come and go.
         float streak = hash(vec2(floor(texel.x / 3.0), texel.y) + floor(uStep / 6.0) * 0.37);

@@ -176,7 +176,7 @@ Limits and things learned:
 - Sun and moon have separate palette entries, so both can be in the sky at dusk in the right colours.
 - **Moon phases are drawn:** eight frames in one sheet (new, crescent, quarter, gibbous, full, and the waning four), stepped by tapping the moon. Changed after a look on the phone:
   - The unlit part has its own dim colour, one palette entry with a hand-picked value per time of day, so the whole disc can be made out in every phase and the new moon is a faint disc. Left empty, the quarter moon looked like a disc cut in half.
-  - The moon is 17 pixels across (was 13), and the shadow line for crescent and gibbous is pushed further from new and full than the true geometry. At 13 pixels with true geometry, gibbous differed from full by one column.
+  - The moon is 13 pixels across, the same as the sun's disc without its halo (17 was tried and looked too big next to the sun). The shadow line for crescent and gibbous is pushed further from new and full than the true geometry: with true geometry at this size, gibbous differs from full by one column.
   - The dim colour is one flat colour over a banded sky, so it sits closer to the sky in some bands than others.
 - Not done: choosing the phase from the date and real positions from date and place (the spec asks for both; that is arithmetic for the pure module, not a rendering question), and a soft way to hide sun and moon (they switch off at once, behind the rain).
 
@@ -207,3 +207,30 @@ Limits:
 - English only. No digits (rule 8 keeps numbers off the screen, but dates or counts in goals may need them), no accented letters. Other languages run longer, German by roughly a third, so the same limit in letters is tighter for them.
 - The glyphs are a first drawing, not tuned letter by letter, and there is no kerning.
 - The font sheet is ordinary colour drawn after the shader, so text does not darken at night; the cream bubble is bright against a night scene.
+
+## Stars and wildlife (2026-11-11)
+
+**Is the sky built in layers?** Partly. From back to front: the sky image (colour bands and clouds, does not scroll), stars (drawn by the game), sun and moon (their own sprites), then hills, trees and ground with parallax. Clouds are still painted into the sky image; drifting clouds would need to become their own piece, like the sun and moon did.
+
+**Stars**
+- Were 16 single points painted into the sky image, in one colour, all appearing at once. Now 34 points placed by the game from a fixed seed, kept apart from each other, denser toward the top and above the clouds.
+- Three kinds: four cross-shaped bright ones, eleven bright single pixels, the rest dim single pixels. One new palette entry (`star_dim`), 46 in all.
+- Each star has its own darkness at which it comes out, so the bright ones appear first at dusk and go last at dawn. Each blinks now and then, in steps three times a second, not as a fade.
+- Rain hides all of them; fog hides the dim ones.
+- The sky's band edges are now broken up over eight rows with a checker pattern of the two colours they already have. No new entries.
+
+**Duck**
+- 12x8, two frames (the wake under it alternates), both facing directions in the sheet so it is never flipped onto half pixels.
+- The shader replaces everything below the waterline with the reflection, so a sprite drawn there would vanish. Fix: sprites that float are drawn with blue set, and the shader shows those pixels as they are, without the water tint or streaks. One texture read more per pixel. This is the way to put anything on the water: a boat, lily pads, a thrown stick.
+- Close under the bank it was lost in the reflection of the dog; 30 pixels out it reads clearly.
+
+**Squirrel**
+- 12x10, four frames (sitting, tail flick, two for running), both directions. Dashes along the bank right of the fire, stops and sits.
+- At night and in rain it runs off to the right and stays away, then comes back: the spec's "animals hide".
+- Both animals reuse colours the scene already has, so they follow time of day, weather and firelight with no extra work.
+
+**Limits**
+- Placeholder art drawn as text grids in `tools/make_art.py`; real animals want more frames and an artist's hand.
+- The duck has no reflection of its own and does not react to rain rings or to the character.
+- The squirrel does not avoid the fire or the dog, and has no shadow.
+- Phone cost: see the commit that records it.

@@ -20,7 +20,7 @@ random.seed(11)
 # name -> day colour. Order fixes the index (1-based; 0 is unused).
 DAY = {
     "sky1": (86, 150, 214), "sky2": (112, 172, 224), "sky3": (146, 196, 232), "sky4": (182, 216, 236),
-    "sky5": (214, 232, 236), "star": (86, 150, 214), "sun": (255, 246, 206),
+    "sky5": (214, 232, 236), "star": (250, 252, 255), "sun": (255, 246, 206),
     "halo1": (196, 224, 238), "halo2": (228, 238, 230),
     "cloud": (244, 246, 240), "cloud_shade": (204, 216, 228),
     "hill_far": (136, 168, 178), "hill_near": (104, 144, 140),
@@ -37,6 +37,7 @@ DAY = {
     "petal": (238, 128, 150), "petal_light": (252, 238, 204), "ash": (112, 106, 108),
     "moon": (226, 234, 244), "moon_shade": (196, 210, 230),
     "moon_dark": (126, 174, 220),  # the unlit part: a step away from the sky, so the whole disc can be made out
+    "star_dim": (170, 204, 236),  # stars are drawn by the game, which decides when each one is out
 }
 NAMES = list(DAY)
 INDEX = {n: i + 1 for i, n in enumerate(NAMES)}
@@ -70,20 +71,20 @@ OVERRIDE = {
         "sky1": (10, 14, 40), "sky2": (14, 20, 52), "sky3": (20, 28, 66), "sky4": (28, 38, 82), "sky5": (38, 50, 98),
         "star": (236, 240, 255), "sun": (236, 240, 255), "halo1": (30, 42, 88), "halo2": (52, 68, 120),
         "window": (255, 214, 120), "cloud": (44, 58, 108), "cloud_shade": (32, 44, 90),
-        "sun": (255, 236, 190), "moon": (236, 240, 255), "moon_shade": (190, 202, 236), "moon_dark": (36, 46, 86),
+        "sun": (255, 236, 190), "moon": (236, 240, 255), "moon_shade": (190, 202, 236), "moon_dark": (36, 46, 86), "star_dim": (112, 132, 196),
     },
     "dawn": {
         "sky1": (96, 104, 168), "sky2": (150, 130, 186), "sky3": (214, 160, 188), "sky4": (246, 196, 184),
-        "sky5": (252, 226, 190), "star": (96, 104, 168), "sun": (255, 236, 190), "halo1": (250, 208, 190),
+        "sky5": (252, 226, 190), "star": (255, 240, 232), "sun": (255, 236, 190), "halo1": (250, 208, 190),
         "halo2": (254, 226, 196), "window": (255, 214, 120),
-        "moon": (236, 226, 236), "moon_shade": (214, 196, 222), "moon_dark": (164, 146, 192),
+        "moon": (236, 226, 236), "moon_shade": (214, 196, 222), "moon_dark": (164, 146, 192), "star_dim": (178, 158, 204),
     },
     "day": {},
     "dusk": {
         "sky1": (72, 52, 120), "sky2": (128, 70, 136), "sky3": (196, 96, 132), "sky4": (240, 138, 116),
-        "sky5": (252, 186, 128), "star": (72, 52, 120), "sun": (255, 214, 140), "halo1": (250, 160, 120),
+        "sky5": (252, 186, 128), "star": (255, 232, 222), "sun": (255, 214, 140), "halo1": (250, 160, 120),
         "halo2": (254, 190, 130), "window": (255, 214, 120),
-        "moon": (244, 222, 226), "moon_shade": (216, 180, 204), "moon_dark": (118, 76, 134),
+        "moon": (244, 222, 226), "moon_shade": (216, 180, 204), "moon_dark": (118, 76, 134), "star_dim": (158, 112, 170),
     },
     "lit": {"window": (255, 214, 120)},
 }
@@ -124,10 +125,21 @@ def layer():
 # Sky: flat bands, a few stars and clouds. The sun and moon are their own pieces (below).
 # The sky does not scroll, so everything sits in the first 120 columns.
 sky, d = layer()
-for i, top in enumerate([0, 44, 80, 112, 138]):
+SKY_TOPS = [0, 44, 80, 112, 138]
+for i, top in enumerate(SKY_TOPS):
     d.rectangle([0, top, W, H], fill=far(f"sky{i + 1}"))
-for _ in range(16):
-    d.point([random.randint(2, 117), random.randint(2, 42)], fill=far("star"))
+# Each band edge is broken up over eight rows with the two colours it already has: a quarter, a half,
+# then three quarters of the lower colour. It softens the stripes and costs no palette entries.
+for i, top in enumerate(SKY_TOPS[1:]):
+    for row in range(-4, 4):
+        y = top + row
+        for x in range(W):
+            quarter = x % 2 == 0 and y % 2 == 0 and (x // 2 + y // 2) % 2 == 0
+            half = (x + y) % 2 == 0
+            lower = quarter if row < -2 else half if row < 2 else not quarter
+            sky.putpixel((x, y), far(f"sky{i + 2}" if lower else f"sky{i + 1}"))
+for _ in range(16):  # the stars moved into the game; the draws stay so the rest of the art keeps its random layout
+    random.randint(2, 117), random.randint(2, 42)
 for cx, cy, w in [(26, 92, 22), (60, 120, 30), (104, 104, 14)]:
     d.ellipse([cx - w, cy - 4, cx + w, cy + 5], fill=far("cloud_shade"))
     d.ellipse([cx - w + 4, cy - 7, cx + w - 6, cy + 1], fill=far("cloud"))
@@ -142,23 +154,78 @@ for r, name in [(17, "halo1"), (11, "halo2"), (6, "sun")]:
 save(sun, "sun")
 # Eight phases side by side: new, waxing crescent, first quarter, waxing gibbous, full, then waning.
 moon = Image.new("RGBA", (35 * 8, 35), (0, 0, 0, 0))
-# Drawn by hand, 17 across: a computed circle this small comes out as an octagon.
-MOON_WIDTHS = [7, 11, 13, 15, 15, 17, 17, 17, 17, 17, 17, 17, 15, 15, 13, 11, 7]
-MOON_SHADE = {(4, 4), (5, 4), (4, 5), (5, 5), (5, 6), (12, 6), (13, 6), (6, 10), (7, 10), (5, 11), (6, 11), (7, 11),
-              (6, 12), (12, 12), (9, 3), (11, 14)}
+# Drawn by hand, 13 across, the same as the sun's disc without its halo: a computed circle this small
+# comes out as an octagon.
+MOON_WIDTHS = [5, 9, 11, 11, 13, 13, 13, 13, 13, 11, 11, 9, 5]
+MOON_SIZE = len(MOON_WIDTHS)
+MOON_SHADE = {(3, 3), (4, 3), (3, 4), (4, 4), (9, 5), (10, 5), (5, 8), (4, 9), (5, 9), (9, 10), (7, 2)}
 # Where the shadow line sits in each phase, as a share of each row's half width. Crescent and gibbous are
 # pushed further from new and full than the true geometry, so they can be told apart at this size.
 MOON_EDGE = [1.0, 0.5, 0.0, -0.5, -1.0, -0.5, 0.0, 0.5]
 for phase in range(8):
     for y, width in enumerate(MOON_WIDTHS):
-        for x in range((17 - width) // 2, (17 + width) // 2):
-            dx = x - 8
+        for x in range((MOON_SIZE - width) // 2, (MOON_SIZE + width) // 2):
+            dx = x - MOON_SIZE // 2
             edge = MOON_EDGE[phase] * width / 2
             lit = dx > edge - 0.5 if phase <= 4 else dx < -edge + 0.5
             # The unlit part is drawn in its own dim colour, so the full disc stays visible in every phase.
             name = ("moon_shade" if (x, y) in MOON_SHADE else "moon") if lit else "moon_dark"
-            moon.putpixel((35 * phase + 9 + x, 9 + y), far(name))
+            moon.putpixel((35 * phase + 11 + x, 11 + y), far(name))
 save(moon, "moon")
+
+# Wildlife. Both reuse colours the scene already has, so they cost no palette entries.
+def creature(name, frames, colours, width, afloat=False):
+    """A sheet with the frames facing right in the top row and mirrored in the bottom row."""
+    height = len(frames[0])
+    img = Image.new("RGBA", (width * len(frames), height * 2), (0, 0, 0, 0))
+    for f, rows in enumerate(frames):
+        for y, row in enumerate(rows):
+            for x, ch in enumerate(row.ljust(width, ".")):
+                if ch != ".":
+                    index = WATER_HI if colours[ch] == "wake" else INDEX[colours[ch]]
+                    # Blue marks pixels that float on the water: the shader shows them instead of the reflection.
+                    px = (index * 4, 255, 255 if afloat else 0, 255)
+                    img.putpixel((f * width + x, y), px)
+                    img.putpixel((f * width + width - 1 - x, height + y), px)
+    save(img, name)
+
+
+DUCK = [
+    "........hh..",
+    ".......hhhbb",
+    ".......hh...",
+    "t.dddddww...",
+    "tddddddwww..",
+    ".dddddwwww..",
+    "..wwwwwww...",
+]
+creature("duck", [DUCK + ["k.kkkkkkk.kk"], DUCK + ["kk.kkkkkkk.k"]],
+         {"h": "tree", "b": "scarf", "d": "dog_shade", "w": "dog", "t": "dog", "k": "wake"}, 12, afloat=True)
+SIT = [
+    "tttt...e.e..",
+    "tttt..hhhh..",
+    "ttt...hkhhn.",
+    ".tt..bhhhh..",
+    ".tt.bbbww...",
+    "..tbbbbww...",
+    "..tbbbbw....",
+    "...bbbbbf...",
+    "...ff..ff...",
+]
+RUN = [
+    "tt..........",
+    "ttt.....e.e.",
+    ".ttt...hhhh.",
+    "..ttbbbhkhhn",
+    "...bbbbbbhh.",
+    "...bbbbbbw..",
+]
+creature("squirrel", [
+    [".tt........."] + SIT,
+    ["..tt........"] + [".ttt...e.e.."] + SIT[1:],
+    ["", "", ""] + RUN + ["..f.f...f.f."],
+    ["", ""] + RUN + ["...ff..ff...", ""],
+], {"t": "coat", "b": "wall", "h": "wall", "e": "wall_shade", "f": "wall_shade", "w": "dog", "k": "log", "n": "log"}, 12)
 
 # Two ridges of far hills.
 hills, d = layer()

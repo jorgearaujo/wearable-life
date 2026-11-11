@@ -189,7 +189,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
           for (var f = 0; f < 8; f++) Sprite(moonSheet, srcPosition: Vector2(35.0 * f, 0), srcSize: Vector2.all(35)),
         ];
         moon = SpriteComponent(sprite: moonFrames[moonPhase]);
-        world.addAll([sun, moon]);
+        world.addAll([Stars(this), sun, moon]);
       }
     }
     final flowerSheet = await images.load('flowers.png');
@@ -208,6 +208,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       ),
     );
     world.add(Props(this));
+    world.add(Wildlife(this, await images.load('duck.png'), await images.load('squirrel.png')));
 
     camera = CameraComponent.withFixedResolution(width: viewW, height: viewH, world: world);
     camera.viewfinder.anchor = Anchor.topLeft;
@@ -471,6 +472,128 @@ class GradePostProcess extends PostProcess {
 }
 
 /// Placeholder campfire, drawn as rectangles in palette-index colours (red = index * 4).
+Paint indexPaint(int index) => Paint()
+  ..color = Color.fromARGB(255, index * 4, 0, 0)
+  ..isAntiAlias = false;
+
+double _noise(int a, int b) => (sin(a * 12.9898 + b * 78.233) * 43758.5453).abs() % 1.0;
+
+/// Stars as single pixels drawn by the game, not painted into the sky. Each has its own moment to come
+/// out as the sky darkens (the bright ones first), and each blinks now and then, in steps.
+class Stars extends Component {
+  Stars(this.game) {
+    final rng = Random(5);
+    while (_stars.length < 34) {
+      // More of them toward the top; none low enough to sit on the clouds.
+      final x = 3 + rng.nextInt(114), y = 16 + (70 * pow(rng.nextDouble(), 1.4)).floor();
+      if (_stars.any((s) => (s.$1 - x).abs() < 6 && (s.$2 - y).abs() < 6)) {
+        continue;
+      }
+      final n = _stars.length;
+      final kind = n < 4 ? 2 : n < 15 ? 1 : 0; // 2 a cross, 1 bright, 0 dim
+      final out = kind == 2 ? 0.3 + 0.05 * n : kind == 1 ? 0.45 + 0.02 * n : 0.62 + 0.017 * (n - 15);
+      _stars.add((x, y, kind, out));
+    }
+  }
+
+  final SpikeGame game;
+  final _stars = <(int, int, int, double)>[];
+  final _bright = indexPaint(6), _dim = indexPaint(46);
+
+  @override
+  void render(Canvas canvas) {
+    final grade = game.grade;
+    if (grade.rain >= 0.5) {
+      return; // rain clouds hide them, as they hide the sun and moon
+    }
+    final left = game.camera.viewfinder.position.x; // the sky does not scroll
+    final beat = (game.elapsed * 3).floor();
+    for (var i = 0; i < _stars.length; i++) {
+      final (x, y, kind, out) = _stars[i];
+      if (grade.dark <= out || (kind == 0 && grade.fog >= 0.5)) {
+        continue;
+      }
+      final blink = _noise(i, beat) > 0.9;
+      void dot(int dx, int dy, Paint paint) => canvas.drawRect(Rect.fromLTWH(left + x + dx, y + dy + 0.0, 1, 1), paint);
+      if (kind == 0) {
+        if (!blink) dot(0, 0, _dim);
+      } else {
+        dot(0, 0, blink ? _dim : _bright);
+        if (kind == 2 && !blink) {
+          for (final (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
+            dot(dx, dy, _dim);
+          }
+        }
+      }
+    }
+  }
+}
+
+/// A duck on the water and a squirrel on the bank. Both are indexed sprites in colours the scene already
+/// has, so they follow the time of day and the firelight like everything else.
+class Wildlife extends Component {
+  Wildlife(this.game, this.duck, this.squirrel);
+
+  final SpikeGame game;
+  final ui.Image duck, squirrel;
+  final _rng = Random(3);
+  final _paint = Paint()
+    ..filterQuality = FilterQuality.none
+    ..isAntiAlias = false;
+
+  double duckX = 60, duckDir = 1;
+  double squirrelX = 205, squirrelTo = 205, pause = 1.5;
+  bool squirrelLeft = false;
+
+  @override
+  void update(double dt) {
+    // The duck paddles slowly from one side of the water to the other.
+    duckX += duckDir * 4 * dt;
+    if (duckX < 8 || duckX > worldW - 20) {
+      duckDir = -duckDir;
+    }
+    // The squirrel dashes, stops and sits up. At night and in rain it goes off to the right and stays away:
+    // hidden, not gone.
+    final away = game.grade.dark > 0.7 || game.grade.rain > 0.5;
+    if (away) {
+      squirrelTo = worldW + 14;
+      pause = 0;
+    } else if (squirrelTo > worldW) {
+      squirrelTo = 200;
+    }
+    if (pause > 0) {
+      pause -= dt;
+    } else if ((squirrelTo - squirrelX).abs() < 1) {
+      if (!away) {
+        pause = 1 + _rng.nextDouble() * 2.5;
+        squirrelTo = 180 + _rng.nextDouble() * 52;
+      }
+    } else {
+      squirrelLeft = squirrelTo < squirrelX;
+      squirrelX += (squirrelLeft ? -34 : 34) * dt;
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final beat = (game.elapsed * 2).floor();
+    canvas.drawImageRect(
+      duck,
+      Rect.fromLTWH(beat.isEven ? 0 : 12, duckDir > 0 ? 0 : 8, 12, 8),
+      Rect.fromLTWH(duckX.floorToDouble(), waterY + 30, 12, 8),
+      _paint,
+    );
+    final moving = pause <= 0 && (squirrelTo - squirrelX).abs() >= 1;
+    final frame = moving ? 2 + (game.elapsed * 8).floor() % 2 : (beat % 5 == 0 ? 1 : 0);
+    canvas.drawImageRect(
+      squirrel,
+      Rect.fromLTWH(frame * 12.0, squirrelLeft ? 10 : 0, 12, 10),
+      Rect.fromLTWH(squirrelX.floorToDouble() - 6, bankY - 10, 12, 10),
+      _paint,
+    );
+  }
+}
+
 class Props extends Component {
   Props(this.game);
 
