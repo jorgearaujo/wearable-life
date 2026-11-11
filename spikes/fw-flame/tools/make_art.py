@@ -139,7 +139,8 @@ d = ImageDraw.Draw(sun)
 for r, name in [(17, "halo1"), (11, "halo2"), (6, "sun")]:
     d.ellipse([17 - r, 17 - r, 17 + r, 17 + r], fill=far(name))
 save(sun, "sun")
-moon = Image.new("RGBA", (35, 35), (0, 0, 0, 0))
+# Eight phases side by side: new, waxing crescent, first quarter, waxing gibbous, full, then waning.
+moon = Image.new("RGBA", (35 * 8, 35), (0, 0, 0, 0))
 # Drawn by hand: a computed circle this small comes out as an octagon, and computed craters as plus signs.
 MOON = [
     "....#####....",
@@ -156,10 +157,16 @@ MOON = [
     "..#########..",
     "....#####....",
 ]
-for y, row in enumerate(MOON):
-    for x, ch in enumerate(row):
-        if ch != ".":
-            moon.putpixel((11 + x, 11 + y), far("moon" if ch == "#" else "moon_shade"))
+for phase in range(8):
+    edge = math.cos(math.pi * phase / 4)  # where the shadow line sits, as a share of each row's half width
+    for y, row in enumerate(MOON):
+        half = (len(row) - 2 * (len(row) - len(row.lstrip(".")))) / 2
+        for x, ch in enumerate(row):
+            dx = x - 6
+            lit = dx > edge * half - 0.5 if phase <= 4 else dx < -edge * half + 0.5
+            # The dark part is left empty, so the sky shows through; the new moon is not drawn at all.
+            if ch != "." and lit:
+                moon.putpixel((35 * phase + 11 + x, 11 + y), far("moon" if ch == "#" else "moon_shade"))
 save(moon, "moon")
 
 # Two ridges of far hills.

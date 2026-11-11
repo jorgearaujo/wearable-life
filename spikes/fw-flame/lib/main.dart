@@ -146,6 +146,8 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
   late final GradePostProcess grade;
   final layers = <(SpriteComponent, double)>[];
   late final SpriteComponent sun, moon, tarp, flowers;
+  late final List<Sprite> moonFrames;
+  int moonPhase = 4; // 0 new, 2 first quarter, 4 full, 6 last quarter
   late final List<Sprite> flowerFrames;
   late final Hud hud;
 
@@ -182,7 +184,11 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       if (name == 'sky') {
         // Sun and moon sit between the sky and the hills, so they rise and set behind the ridge.
         sun = SpriteComponent(sprite: await loadSprite('sun.png'));
-        moon = SpriteComponent(sprite: await loadSprite('moon.png'));
+        final moonSheet = await images.load('moon.png');
+        moonFrames = [
+          for (var f = 0; f < 8; f++) Sprite(moonSheet, srcPosition: Vector2(35.0 * f, 0), srcSize: Vector2.all(35)),
+        ];
+        moon = SpriteComponent(sprite: moonFrames[moonPhase]);
         world.addAll([sun, moon]);
       }
     }
@@ -227,6 +233,10 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     final row = ((vy - Hud.metersTop) / 9).floor();
     if (vx < 48 && row >= 0 && row < 3) {
       hud.say(meterReasons[row]);
+    } else if (moon.opacity > 0 && (wx - moon.x - 17).abs() < 14 && (wy - moon.y - 17).abs() < 14) {
+      // The real phase comes from the date; here a tap steps through the eight drawn frames.
+      moonPhase = (moonPhase + 1) % 8;
+      moon.sprite = moonFrames[moonPhase];
     } else if (wx > 40 && wx < 106 && wy > bankY - 53 && wy < bankY) {
       cabin = (cabin + 1) % 3;
       tarp.opacity = cabin == 0 ? 1 : 0; // all or nothing: half-transparent indices would be wrong colours
@@ -301,7 +311,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       hudText.value =
           '${fps.round()} fps  worst ${worstMs.round()} ms\n'
           'view ${viewW.round()}x${fit.viewH.round()}  ${holds[hold].$1}\n'
-          'tap: a meter, the cabin, the fire, or anywhere else';
+          'tap: a meter, the cabin, the fire, the moon, or elsewhere';
       worstMs = 0;
     }
   }
