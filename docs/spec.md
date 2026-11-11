@@ -85,9 +85,10 @@ The player sees three meters: Sleep, Energy and Activity. Each must be explainab
 
 ### Sleep (sleep pressure)
 
-- **Morning:** last night's sleep score sets the starting value and how fast it drains. The score is Whoop-like: hours versus need, consistency, efficiency, Deep + REM.
+- **Morning:** last night's sleep score sets the starting value. From there the meter falls in a straight line to the zero point (decided 2026-11-11 for the prototype; to be judged by feel). The score is Whoop-like: hours versus need, consistency, efficiency, Deep + REM.
 - **During the day:** the meter drains as sleep pressure builds.
 - **Bedtime recommendation:** based on sleep need plus sleep debt, counted back from the next phone alarm (or the usual wake time when there's no alarm). It can shift during the day with strain.
+- **Sleep need** starts at 7 hours and may learn from the player's own longer nights, between 7 and 9 hours (decided 2026-11-11).
 - **Sleep debt:** capped at 2 hours. The bedtime recommendation repays at most 30 minutes a day, so it stays doable.
 - **Zero point:** the meter reaches 0 at the recommended bedtime + 1 hour.
 - **Naps** restore part of the meter.
@@ -102,11 +103,11 @@ The player sees three meters: Sleep, Energy and Activity. Each must be explainab
 
 ### Activity
 
-- **No fixed start value or time.**
-- **Target:** reaching the day's strain target means hitting 100. The target scales with recovery, as Whoop does, so a low-recovery day asks for less.
+- **No fixed start value or time:** the meter carries over from one day to the next (decided 2026-11-11).
+- **Target:** reaching the day's strain target means hitting 100. The target is set by the Energy level at the start of the day, so a low morning asks for less. For the Mood score a good morning never makes the day harder: it counts against the smaller of the usual target and today's.
 - **Inputs:** heart-rate strain for intensity (workouts, runs) blended with steps for general movement, so a 15,000-step day at low heart rate still counts. Steps alone are the fallback for players without a wearable.
 - **Daily steps come from Health Connect's own total,** never from adding sources together. A wearable and the phone count mostly the same steps; the total takes one source where both have data and fills each one's gaps. It follows the source order the player sets in Health Connect. (Decided 2026-11-11; HealthKit's equivalent is untested.)
-- **Draining:** drains when the player stops moving, and can drift to 0 over days of very low activity.
+- **Draining:** drains whenever no strain is being added, and reaches 0 after about 48 to 72 hours of doing practically nothing.
 - **Overdoing it:** activity beyond the target causes extra Energy drain, on top of the normal strain drain.
 
 ## Hidden values and explainability
@@ -116,6 +117,7 @@ The game uses many internal numbers to make decisions, but every visible change 
 - **Hidden inputs may shape the day:** HRV, resting heart rate and breathing rate can set morning Energy, adjust the Activity target, or trigger rest mode. Players experience this as "my body is tired today", which feels fair.
 - **Hidden inputs never grade the player:** metrics the player doesn't directly control never lower the Mood score, the weather or level progress.
 - **The numbers are hidden, the use is not:** the permission screen, onboarding and the privacy policy say in plain words which data shapes Energy and the day. Only the internal numbers stay out of sight.
+- **A night whose data never arrives** (decided 2026-11-11): after 4 hours the character wakes anyway, the meters start from the player's usual values, and that night is left out of the Mood score.
 - **Tap for the reason:** tapping a meter gives a plain-language cause without showing the number. Example: "Energy starts lower today: your resting heart rate is higher than usual." A reason is at most about 75 letters in English, which is four lines in the speech bubble (decided 2026-11-11; `spikes/fw-flame/README.md`).
 
 ## Mood score, level and rest mode
@@ -305,6 +307,7 @@ All health data stays on the device, read from Health Connect or HealthKit. The 
 - [x] Weekly goals: set by an admin, not by the player, and shipped inside the app (decided 2026-11-11). The goals themselves, and how they rotate from week to week, are still to be designed (deferred by the project owner, 2026-11-11). First ideas: a minimum Sleep level, reaching a step count, filling the Activity meter. Each has to be worded without internal numbers and must not depend on hidden values.
 - [x] Progress when a player changes phones: progress-only file in the system backup, for now (`docs/decisions/2026-11-11-encryption-at-rest.md`)
 - [ ] Moving progress between Android and iPhone (later; a manual transfer is the candidate)
+- [ ] How the Mood score counts Sleep and Energy without letting hidden values lower it (`docs/decisions/2026-11-11-scoring-rules.md`, questions 1 and 2)
 - [ ] Final visual style after exploring design ideas
 - [ ] Character design: original concept based on the qualities in Visual direction
 - [ ] Rendering approach: flat 2D layers (Cast n Chill) or pixel art in a 3D setting (Neko Odyssey); affects the framework choice

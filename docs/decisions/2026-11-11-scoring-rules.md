@@ -1,9 +1,9 @@
 # Scoring rules on paper
 
 - **Date:** 2026-11-11
-- **Status:** **proposed, not decided.** A first full set of rules for the project owner to react to. Nothing is built. `docs/spec.md` is unchanged until the questions in section 10 are answered.
+- **Status:** **partly decided** (2026-11-11). Questions 3 to 8 in section 10 are answered and applied to `docs/spec.md`. How the Mood score counts Sleep and Energy (questions 1 and 2) is still open. Nothing is built.
 - **Question:** The spec describes the meters in words. What exact rules turn health records and the time into meter values, reasons, the Mood score and the level?
-- **Answer so far:** every meter can be worked out from steps and sleep duration alone, with each richer input adding one clearly bounded part. Writing the rules down exposed seven places where the spec is silent or pulls against rule 2 (hidden values never grade the player). They are listed in section 10 with a recommendation each.
+- **Answer so far:** every meter can be worked out from steps and sleep duration alone, with each richer input adding one clearly bounded part. Writing the rules down exposed seven places where the spec is silent or pulls against rule 2 (hidden values never grade the player). They are listed in section 10 with the owner's answers.
 - **Evidence:** `docs/spec.md`; the shapes of real records in `docs/findings/2026-11-11-health-connect-data.md`. No rule here has been run against data.
 - **About the numbers:** every weight, rate and limit below is a **starting value**. They exist so the rules are complete enough to argue with. Phase 1 tunes them against the recorded data in `fixtures/`. No number compares HRV, resting heart rate or breathing rate with a population value; those are only ever compared with the player's own usual.
 
@@ -33,7 +33,7 @@
 ## 2. Sleep
 
 **Sleep need for tonight** = base need + debt repayment + extra after a hard day.
-- Base need: 8 hours, adjustable by the player (question 5).
+- Base need: 7 hours to start. It moves slowly toward the longer nights in the player's last 30 (the upper quarter), never below 7 and never above 9 hours (question 5).
 - Sleep debt: each morning, debt = debt + base need − time asleep, kept between 0 and 2 hours. Naps reduce it by their length.
 - Debt repayment: at most 30 minutes a night.
 - Extra after a hard day: up to 30 minutes, growing as the day's load passes the Activity target.
@@ -97,17 +97,18 @@
 **The Activity meter**
 - Carries over from yesterday, so it has no fixed start value.
 - Rising: load moves it from where the day started toward 100, reaching 100 exactly when today's target is met.
-- Falling: 3 points an hour while awake and still (no steps for 30 minutes). It does not fall during sleep. Two very still days empty it.
+- Falling: 2 points an hour while awake and no load is being added (no steps for 30 minutes). It does not fall during sleep. A full meter is empty after about three days of doing practically nothing, a typical one after about two.
 - The dog's restlessness follows the "awake and still" time, not the meter value.
 
 ## 5. Mood score, weather, dormancy
 
 **Day result** (0 to 100), only from things the player controls:
-- Sleep: the Hours and Consistency parts of the sleep score. Efficiency and Deep and REM are left out (question 2).
+- Sleep (proposed, question 2): the Hours and Consistency parts of the sleep score, scaled so that meeting both is 100. Efficiency and Deep and REM are left out.
 - Activity: load ÷ target, at most 1, using the **smaller** of the standard target and today's target. A good morning never makes the day harder to pass (question 3).
-- Energy has no part of its own (question 1).
-- Day result = the average of the Sleep and Activity parts.
-- A day with no sleep data counts Activity only. A day with no data at all is left out, not counted as zero.
+- Energy (proposed, question 1): full marks when Energy did not run out before the recommended bedtime; less for each hour spent at 0. It counts how Energy was looked after, never where it started.
+- Day result = the average of the three parts. A day with all three met is 100, and a week of them is a Mood score of 100.
+- Design constraint on section 3: on any morning, meeting today's target and going to bed on time must leave Energy above 0. The starting numbers there do not yet guarantee this on the lowest mornings and must be tuned so they do.
+- A day with no sleep data counts Activity and Energy only. A day with no data at all is left out, not counted as zero.
 
 **Mood score** = the average day result over the last 7 days that have one, plus 5 for each weekly goal completed this week, at most 100. Fewer than 3 days: the Mood score is held at 60.
 
@@ -175,16 +176,18 @@ When several causes apply, the one with the largest effect is shown.
 | + breathing rate | | sharper body part | |
 | + HRV | | sharpest body part | |
 
-## 10. Questions for the project owner
+## 10. Questions and answers
 
-1. **Energy in the Mood score.** The spec says the Mood score reflects Sleep, Energy and Activity. Morning Energy is set by hidden values, so counting it would let them lower the Mood score, against rule 2. *Recommended:* Energy has no part of its own in the Mood score; it shows through Sleep and Activity. The spec line would change.
-2. **Sleep stages in the Mood score.** A player controls when and how long they sleep, not how much deep sleep they get. *Recommended:* Efficiency and Deep and REM shape the Sleep meter and the morning fog, but only Hours and Consistency count for the Mood score. Open point inside this: morning fog is then partly driven by something the player does not control. Rule 2 does not name sleep stages as hidden values, so this is a judgement call.
-3. **A good morning raising the target.** The spec scales the target with recovery. Scaled up, a hidden value makes the day harder to pass. *Recommended:* the target shown may rise, but the Mood score counts against the smaller of the standard and today's target.
-4. **What the Activity meter is.** The spec says "no fixed start value", "reaching the target means 100" and "can drift to 0 over days". *Recommended:* the meter carries over between days, rises to exactly 100 when today's target is met, and falls while the player is awake and still. The alternative is a meter that starts at 0 every morning, which is simpler but contradicts two of the three lines.
-5. **Sleep need.** *Recommended:* 8 hours to start, with a setting from 7 to 9. Learning it from the player's own history would teach the game that a short sleeper needs little sleep.
-6. **The Sleep meter's shape.** The spec says the score sets the start "and how fast it drains", and also fixes the zero point. With both ends fixed, a worse night starts lower and so drains more slowly. *Recommended:* accept the straight line for the prototype and judge by feel in Phase 1.
-7. **A night that never arrives** (wearable not worn or not synced). *Recommended:* after 4 hours the character wakes anyway, the meters start from the player's usual values, and the night is left out of the Mood score rather than counted as bad.
-8. **Weekly goal weight.** *Recommended to start:* 5 Mood points and 3 growth each. Depends on how many goals a week there are, which is deferred.
+Answered by the project owner on 2026-11-11 unless marked open.
+
+1. **Energy in the Mood score: open, new proposal.** The owner's aim: the Mood score shows how the week went on all three meters, and a player who does everything right every day gets 100. A morning Energy value cannot be something to "do right", because hidden values set it (rule 2). *Proposed:* Energy counts by how it was looked after, not where it started: full marks on a day Energy did not run out before the recommended bedtime. Because the Activity target shrinks with a low morning, this is reachable on every morning, which section 3's numbers must guarantee.
+2. **Sleep stages in the Mood score: open, same proposal.** *Proposed:* the Sleep part is Hours and Consistency, scaled so that meeting both is 100. Stages still shape the Sleep meter and the fog.
+3. **Target follows morning Energy: decided.** The Mood score counts against the smaller of the standard target and today's, so a good morning never makes the day harder to pass. (Applied as recommended; the owner's answer confirmed the target rule and did not speak to this detail.)
+4. **Activity meter carries over: decided.** It rises as load builds, falls when none is added, and reaches 0 after about 48 to 72 hours of doing practically nothing. *Recommended on the owner's open point:* 100 means today's target is met, not several days' worth. One good day can then always fill it, the sentence stays simple ("you reached today's goal"), and the carry-over already rewards the days before by giving a head start.
+5. **Sleep need: decided.** Starts at 7 hours. It may learn from history: *proposed* that it moves slowly toward the longer nights in the player's last 30 (the upper quarter), never below 7 and never above 9 hours.
+6. **Sleep meter is a straight line: decided** for the prototype; judged by feel in Phase 1.
+7. **A night that never arrives: decided.** After 4 hours the character wakes, meters start from the player's usual values, and the night is left out of the Mood score.
+8. **Weekly goal weight: agreed** as a starting value (5 Mood points, 3 growth each), revisited when the goals are designed.
 
 ## 11. Not covered
 
