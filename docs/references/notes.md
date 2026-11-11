@@ -101,7 +101,7 @@ What these show:
 
 - **Cast n Chill's character is about 25 art pixels tall.** The face is only a few pixels and has no drawn eyes; the hat and clothing colours carry the identity.
 - **The dog is large:** close to the character's height, with a strong, readable shape, and full of movement (bounding, sitting, playing).
-- **Interactions are fully animated.** When the player pets the dog, the character walks over, reaches down and pets its head while the dog wags its tail and leans in; a small heart can appear on top. Cast n Chill shows only a heart and a hand cursor, which is not the bar here.
+- **Interactions are acted out by the character.** When the player pets the dog, the character walks over and pets its head, and the dog wags its tail (as in `docs/spec.md`). Cast n Chill shows only a heart and a hand cursor, which is not the bar here.
 
 ## 6. Flourishing versus dormant
 
@@ -126,7 +126,7 @@ What these show: **dormant means covered and waiting, not abandoned.** A tarp, a
 | --- | --- | --- |
 | `video-stills/ui-icon-meter-on-sky.jpg` | **A positive example:** a small row of pixel icons floating in the sky, filled ones in colour and empty ones as dark silhouettes. No numbers, no panel, no frame. A good model for the three meters | The pop-up menu below it |
 | `video-stills/ui-speech-bubble-rain.jpg` | Kingdom Two Crowns: a short line of text in a small pixel speech bubble placed in the scene. A good model for the one-sentence explanations | Its pixel font size and style |
-| `pixel-style/light-fog-pet-dog.jpg` | Feedback inside the world: a small heart above the dog when petted, as an extra touch | Hand cursor icon. A heart on its own is not enough: in our game the character actually walks over and pets the dog (see section 5) |
+| `pixel-style/light-fog-pet-dog.jpg` | Feedback inside the world: a small heart above the dog when petted, as an extra touch | Hand cursor icon. A heart on its own is not enough: the character walks over and pets the dog (see section 5) |
 | `pixel-style/time-winter-frozen.jpg` | Pixel UI in a muted panel that matches the scene palette, with a pixel font | The busy item row |
 | `character/not-ui-neko-hud.jpg` | **Not this:** a top bar full of counters, numbers and button prompts covering the scene | — |
 

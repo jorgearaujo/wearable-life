@@ -138,7 +138,7 @@ Tap now steps through: cycle, night, dawn, day, dusk, day rain, dusk rain, night
 
 ## Third pass: meters and reasons, dormant states, moving sun and moon (2026-11-11)
 
-Three questions, all in the same scene. Checked on the emulator, release build. **Cost on the Pixel 7a: not yet measured;** the build is installed.
+Three questions, all in the same scene. Checked on the emulator, release build. **Cost on the Pixel 7a:** 60 fps, worst frame 17 ms (read off the screen by the project owner, 2026-11-11), the same as every earlier pass.
 
 ### 1. Meters and the one-line reason over the scene
 

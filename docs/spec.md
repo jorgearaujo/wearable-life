@@ -300,7 +300,7 @@ All health data stays on the device, read from Health Connect or HealthKit. The 
 - [x] App framework / engine (Phase 0): Flutter + Flame, `docs/decisions/2026-11-11-framework.md`
 - [ ] Data discovery: which data types each major wearable writes to Health Connect and HealthKit, and when (Phase 0)
 - [x] Name for the weekly score: Mood score
-- [x] Weekly goals: set by an admin, not by the player, and shipped inside the app (decided 2026-11-11). The goals themselves, and how they rotate from week to week, are still to be designed.
+- [x] Weekly goals: set by an admin, not by the player, and shipped inside the app (decided 2026-11-11). The goals themselves, and how they rotate from week to week, are still to be designed (deferred by the project owner, 2026-11-11). First ideas: a minimum Sleep level, reaching a step count, filling the Activity meter. Each has to be worded without internal numbers and must not depend on hidden values.
 - [ ] Final visual style after exploring design ideas
 - [ ] Character design: original concept based on the qualities in Visual direction
 - [ ] Rendering approach: flat 2D layers (Cast n Chill) or pixel art in a 3D setting (Neko Odyssey); affects the framework choice
