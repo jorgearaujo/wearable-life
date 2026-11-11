@@ -287,6 +287,13 @@ class GradePostProcess extends PostProcess {
     scene.dispose();
   }
 
+  /// A repeatable random number from 0 to 1 for a pair of whole numbers.
+  static double _hash(int a, int b) {
+    var x = (a * 374761393 + b * 668265263) & 0x7fffffff;
+    x = ((x ^ (x >> 13)) * 1274126177) & 0x7fffffff;
+    return ((x ^ (x >> 16)) & 0xffff) / 65536;
+  }
+
   void _weather(Canvas canvas, Vector2 size, double w, double h) {
     canvas.save();
     canvas.scale(size.x / w, size.y / h); // from here on, one unit is one art pixel
@@ -314,6 +321,30 @@ class GradePostProcess extends PostProcess {
         final px = ((x * w - py * 0.25 - camX) % w).floorToDouble();
         canvas.drawRect(Rect.fromLTWH(px, py, 1, 3), paint);
         canvas.drawRect(Rect.fromLTWH(px - 1, py + 3, 1, 2), paint);
+      }
+      // Drops landing on the water: a bright dot, then a flat ring that widens and fades in three more steps.
+      // Each ripple picks a new spot every time it restarts; spots are fixed to the world, not the screen.
+      const life = 0.48;
+      for (var i = 0; i < 30; i++) {
+        final phase = elapsed / life + i * 0.37;
+        final cycle = phase.floor();
+        final stage = ((phase - cycle) * 4).floor();
+        final x = (_hash(i, cycle) * worldW - camX).floorToDouble();
+        final y = (waterline + 2 + _hash(i, cycle + 9999) * (h - waterline - 3)).floorToDouble();
+        if (x < -8 || x > w + 8 || y >= h) {
+          continue;
+        }
+        paint.color = rainColour.withValues(alpha: const [0.9, 0.7, 0.45, 0.22][stage] * rain);
+        if (stage == 0) {
+          canvas.drawRect(Rect.fromLTWH(x, y - 1, 1, 2), paint);
+        } else {
+          // A flat ellipse outline: top and bottom arcs, one pixel at each side.
+          final reach = stage * 2.0;
+          canvas.drawRect(Rect.fromLTWH(x - reach + 1, y - 1, reach * 2 - 1, 1), paint);
+          canvas.drawRect(Rect.fromLTWH(x - reach + 1, y + 1, reach * 2 - 1, 1), paint);
+          canvas.drawRect(Rect.fromLTWH(x - reach, y, 1, 1), paint);
+          canvas.drawRect(Rect.fromLTWH(x + reach, y, 1, 1), paint);
+        }
       }
     }
     canvas.restore();

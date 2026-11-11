@@ -72,7 +72,8 @@ void main() {
         c = mix(c, now(WATER_TINT), 0.3 + min(0.25, depth / 160.0));
         // Sparse bright streaks, three pixels long, that come and go.
         float streak = hash(vec2(floor(texel.x / 3.0), texel.y) + floor(uStep / 6.0) * 0.37);
-        if (streak > 0.975) {
+        // Fewer of them in rain and fog, so the ripples of landing drops stand out.
+        if (streak > 0.975 + 0.02 * uWet) {
             c = now(WATER_HI);
         }
     }

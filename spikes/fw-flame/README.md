@@ -130,8 +130,8 @@ Tap now steps through: cycle, night, dawn, day, dusk, day rain, dusk rain, night
 - Fog is drawn over the lights, so it dulls the campfire glow. Drawing lights after fog would need the glow moved out of the shader or the fog moved into it.
 - Fog wisps are stacked rectangles and look like bands. Drawn fog sprites would use the same layer.
 - The campfire's own flame colours are muted with the scene.
-- Rain does not splash or change the water.
+- Rain drops land on the water as small ripples (added on request): 30 at a time, each a bright dot that opens into a flat ring over half a second. The water's own highlight streaks are thinned out while it rains so the rings stand out. They are drawn in the same layer and do not disturb the reflection itself.
 
-**Cost on the Pixel 7a:** not yet measured for rain and fog; the build is installed.
+**Cost on the Pixel 7a:** 60 fps, worst frame 17 ms with rain and fog on (read off the screen by the project owner, 2026-11-11), the same as without weather. Measured before the ripples were added.
 
 **Bug fixed on the way:** the `Stack` holding the debug text needed an explicit alignment; without one the first frame threw on a fresh start and the screen stayed blank.
