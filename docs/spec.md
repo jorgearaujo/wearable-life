@@ -135,7 +135,7 @@ The weekly score is called the Mood score (named 2026-11-11).
 - The level rises with consistently good habits and completed weekly goals.
 - **The level never drops.** Flourishing is permanent and only accumulates.
 - When habits slip, things go dormant rather than disappearing: animals hide, flowers close, but they come back.
-- Weekly goals are set by an admin, not by the player (decided 2026-11-11). Where the admin sets them and how they reach the phone is still open (see Open items).
+- Weekly goals are set by an admin, not by the player, and ship inside the app: a change to the goals arrives with an app update, and the app makes no network call for them (decided 2026-11-11).
 
 ### Rest mode
 
@@ -300,7 +300,7 @@ All health data stays on the device, read from Health Connect or HealthKit. The 
 - [x] App framework / engine (Phase 0): Flutter + Flame, `docs/decisions/2026-11-11-framework.md`
 - [ ] Data discovery: which data types each major wearable writes to Health Connect and HealthKit, and when (Phase 0)
 - [x] Name for the weekly score: Mood score
-- [ ] Weekly goals: set by an admin, not by the player. Open: who the admin is, where goals are set, and how they reach the phone (shipped with the app, or fetched, which would be the app's first network call)
+- [x] Weekly goals: set by an admin, not by the player, and shipped inside the app (decided 2026-11-11). The goals themselves, and how they rotate from week to week, are still to be designed.
 - [ ] Final visual style after exploring design ideas
 - [ ] Character design: original concept based on the qualities in Visual direction
 - [ ] Rendering approach: flat 2D layers (Cast n Chill) or pixel art in a 3D setting (Neko Odyssey); affects the framework choice
