@@ -174,7 +174,10 @@ Limits and things learned:
 - A sprite with an odd size must not use a centre anchor: it lands on half pixels and the edges pick up wrong palette indices (seen as stray blue marks). Placed by its top-left corner it is clean.
 - Anything pinned to the screen (sun, moon, light positions, waterline) must be placed after the camera moves in the same frame. Placed before, it sits one pixel off for a frame at every camera step, and the sun and moon visibly shook while the view panned. Seen on the phone, not on the slow emulator; fixed.
 - Sun and moon have separate palette entries, so both can be in the sky at dusk in the right colours.
-- **Moon phases are drawn:** eight frames in one sheet (new, crescent, quarter, gibbous, full, and the waning four), stepped by tapping the moon. The dark part is left empty so the sky shows through, which costs no palette entries; the new moon is therefore invisible. At 13 pixels the gibbous frames differ from full by one column, so they are hard to tell apart; a bigger moon or hand-drawn frames would fix that. Not yet seen on the phone.
+- **Moon phases are drawn:** eight frames in one sheet (new, crescent, quarter, gibbous, full, and the waning four), stepped by tapping the moon. Changed after a look on the phone:
+  - The unlit part has its own dim colour, one palette entry with a hand-picked value per time of day, so the whole disc can be made out in every phase and the new moon is a faint disc. Left empty, the quarter moon looked like a disc cut in half.
+  - The moon is 17 pixels across (was 13), and the shadow line for crescent and gibbous is pushed further from new and full than the true geometry. At 13 pixels with true geometry, gibbous differed from full by one column.
+  - The dim colour is one flat colour over a banded sky, so it sits closer to the sky in some bands than others.
 - Not done: choosing the phase from the date and real positions from date and place (the spec asks for both; that is arithmetic for the pure module, not a rendering question), and a soft way to hide sun and moon (they switch off at once, behind the rain).
 
-Palette entries: 44, up from 36.
+Palette entries: 45, up from 36.

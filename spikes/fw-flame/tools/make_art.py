@@ -36,6 +36,7 @@ DAY = {
     "tarp": (132, 146, 160), "tarp_shade": (100, 112, 132), "rope": (206, 186, 146),
     "petal": (238, 128, 150), "petal_light": (252, 238, 204), "ash": (112, 106, 108),
     "moon": (226, 234, 244), "moon_shade": (196, 210, 230),
+    "moon_dark": (126, 174, 220),  # the unlit part: a step away from the sky, so the whole disc can be made out
 }
 NAMES = list(DAY)
 INDEX = {n: i + 1 for i, n in enumerate(NAMES)}
@@ -69,20 +70,20 @@ OVERRIDE = {
         "sky1": (10, 14, 40), "sky2": (14, 20, 52), "sky3": (20, 28, 66), "sky4": (28, 38, 82), "sky5": (38, 50, 98),
         "star": (236, 240, 255), "sun": (236, 240, 255), "halo1": (30, 42, 88), "halo2": (52, 68, 120),
         "window": (255, 214, 120), "cloud": (44, 58, 108), "cloud_shade": (32, 44, 90),
-        "sun": (255, 236, 190), "moon": (236, 240, 255), "moon_shade": (190, 202, 236),
+        "sun": (255, 236, 190), "moon": (236, 240, 255), "moon_shade": (190, 202, 236), "moon_dark": (36, 46, 86),
     },
     "dawn": {
         "sky1": (96, 104, 168), "sky2": (150, 130, 186), "sky3": (214, 160, 188), "sky4": (246, 196, 184),
         "sky5": (252, 226, 190), "star": (96, 104, 168), "sun": (255, 236, 190), "halo1": (250, 208, 190),
         "halo2": (254, 226, 196), "window": (255, 214, 120),
-        "moon": (236, 226, 236), "moon_shade": (214, 196, 222),
+        "moon": (236, 226, 236), "moon_shade": (214, 196, 222), "moon_dark": (164, 146, 192),
     },
     "day": {},
     "dusk": {
         "sky1": (72, 52, 120), "sky2": (128, 70, 136), "sky3": (196, 96, 132), "sky4": (240, 138, 116),
         "sky5": (252, 186, 128), "star": (72, 52, 120), "sun": (255, 214, 140), "halo1": (250, 160, 120),
         "halo2": (254, 190, 130), "window": (255, 214, 120),
-        "moon": (244, 222, 226), "moon_shade": (216, 180, 204),
+        "moon": (244, 222, 226), "moon_shade": (216, 180, 204), "moon_dark": (118, 76, 134),
     },
     "lit": {"window": (255, 214, 120)},
 }
@@ -141,32 +142,22 @@ for r, name in [(17, "halo1"), (11, "halo2"), (6, "sun")]:
 save(sun, "sun")
 # Eight phases side by side: new, waxing crescent, first quarter, waxing gibbous, full, then waning.
 moon = Image.new("RGBA", (35 * 8, 35), (0, 0, 0, 0))
-# Drawn by hand: a computed circle this small comes out as an octagon, and computed craters as plus signs.
-MOON = [
-    "....#####....",
-    "..#########..",
-    ".###########.",
-    ".##oo#######.",
-    "###oo########",
-    "##########o##",
-    "#############",
-    "#####oo######",
-    "####ooo######",
-    ".###oo###o##.",
-    ".###########.",
-    "..#########..",
-    "....#####....",
-]
+# Drawn by hand, 17 across: a computed circle this small comes out as an octagon.
+MOON_WIDTHS = [7, 11, 13, 15, 15, 17, 17, 17, 17, 17, 17, 17, 15, 15, 13, 11, 7]
+MOON_SHADE = {(4, 4), (5, 4), (4, 5), (5, 5), (5, 6), (12, 6), (13, 6), (6, 10), (7, 10), (5, 11), (6, 11), (7, 11),
+              (6, 12), (12, 12), (9, 3), (11, 14)}
+# Where the shadow line sits in each phase, as a share of each row's half width. Crescent and gibbous are
+# pushed further from new and full than the true geometry, so they can be told apart at this size.
+MOON_EDGE = [1.0, 0.5, 0.0, -0.5, -1.0, -0.5, 0.0, 0.5]
 for phase in range(8):
-    edge = math.cos(math.pi * phase / 4)  # where the shadow line sits, as a share of each row's half width
-    for y, row in enumerate(MOON):
-        half = (len(row) - 2 * (len(row) - len(row.lstrip(".")))) / 2
-        for x, ch in enumerate(row):
-            dx = x - 6
-            lit = dx > edge * half - 0.5 if phase <= 4 else dx < -edge * half + 0.5
-            # The dark part is left empty, so the sky shows through; the new moon is not drawn at all.
-            if ch != "." and lit:
-                moon.putpixel((35 * phase + 11 + x, 11 + y), far("moon" if ch == "#" else "moon_shade"))
+    for y, width in enumerate(MOON_WIDTHS):
+        for x in range((17 - width) // 2, (17 + width) // 2):
+            dx = x - 8
+            edge = MOON_EDGE[phase] * width / 2
+            lit = dx > edge - 0.5 if phase <= 4 else dx < -edge + 0.5
+            # The unlit part is drawn in its own dim colour, so the full disc stays visible in every phase.
+            name = ("moon_shade" if (x, y) in MOON_SHADE else "moon") if lit else "moon_dark"
+            moon.putpixel((35 * phase + 9 + x, 9 + y), far(name))
 save(moon, "moon")
 
 # Two ridges of far hills.
