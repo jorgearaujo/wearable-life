@@ -7,12 +7,21 @@ import 'package:flame/game.dart';
 import 'package:flame/post_process.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:health/health.dart';
 
 const worldW = 360.0;
 const worldH = 480.0;
 const baseW = 180.0;
 const cycleSeconds = 24.0;
+
+/// Set with --dart-define=FIXED_TIME=0 to hold one time of day, in thousandths (0 = midnight, 500 = noon).
+const fixedTime = int.fromEnvironment('FIXED_TIME', defaultValue: -1);
+
+/// LIGHTS=off draws the plain grade; LIGHTS=nomask lights everything in range, sky included.
+const lightsMode = String.fromEnvironment('LIGHTS', defaultValue: 'mask');
+
+// Light sources in world (art pixel) coordinates.
+final firePos = Vector2(196, 372);
+final windowPos = Vector2(100, 358); // the cabin window already in ground.png
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,7 +84,6 @@ class SpikeGame extends FlameGame with PanDetector {
   double autoDir = 1;
   double sinceTouch = 10;
   double elapsed = 0;
-  String stepsText = 'steps: reading';
 
   // Frame timing straight from the engine, so it includes raster time.
   int frames = 0;
@@ -93,7 +101,7 @@ class SpikeGame extends FlameGame with PanDetector {
     final viewH = fit.viewH;
 
     for (final (name, factor) in [('sky', 0.0), ('hills', 0.3), ('trees', 0.6), ('ground', 1.0)]) {
-      final layer = SpriteComponent(sprite: await loadSprite('$name.png'));
+      final layer = Layer(this, await loadSprite('$name.png'), lit: factor >= 0.6);
       layers.add((layer, factor));
       world.add(layer);
     }
@@ -105,6 +113,7 @@ class SpikeGame extends FlameGame with PanDetector {
         anchor: Anchor.center,
       ),
     );
+    world.add(Props(this));
     world.add(Rain(this, await images.load('drop.png')));
 
     camera = CameraComponent.withFixedResolution(width: viewW, height: viewH, world: world);
@@ -120,7 +129,6 @@ class SpikeGame extends FlameGame with PanDetector {
     );
     camera.viewport.add(hud);
 
-    _readSteps();
   }
 
   @override
@@ -129,7 +137,13 @@ class SpikeGame extends FlameGame with PanDetector {
     elapsed += dt;
     worstMs = max(worstMs, dt * 1000.0); // frame-to-frame gap, same measure as the Godot spike
     sinceTouch += dt;
-    grade.timeOfDay = (elapsed / cycleSeconds) % 1.0;
+    grade.timeOfDay = fixedTime >= 0 ? fixedTime / 1000 : (elapsed / cycleSeconds) % 1.0;
+    // Flicker in steps, about 8 times a second, so the glow jumps like pixel art and does not pulse smoothly.
+    final step = (elapsed * 8).floor();
+    final flicker = 0.85 + 0.15 * sin(step * 12.9898).abs();
+    final origin = camera.viewfinder.position;
+    grade.lights[0].setValues(firePos.x - origin.x, firePos.y - origin.y, 46 * flicker, lightsMode == 'off' ? 0 : 1);
+    grade.lights[1].setValues(windowPos.x - origin.x, windowPos.y - origin.y, 26, lightsMode == 'off' ? 0 : 0.8);
     if (sinceTouch > 3) {
       _pan(autoDir * 12 * dt);
     }
@@ -139,7 +153,7 @@ class SpikeGame extends FlameGame with PanDetector {
     if (frames % 30 == 0) {
       fps = 30 / window;
       window = 0;
-      hud.text = '${fps.round()} fps  worst ${worstMs.round()} ms\n$stepsText\n'
+      hud.text = '${fps.round()} fps  worst ${worstMs.round()} ms\n'
           'view ${viewW.round()}x${camera.viewport.virtualSize.y.round()}';
       worstMs = 0;
     }
@@ -164,43 +178,82 @@ class SpikeGame extends FlameGame with PanDetector {
       layer.x = (snapped * (1 - factor)).roundToDouble();
     }
   }
-
-  Future<void> _readSteps() async {
-    try {
-      final health = Health();
-      await health.configure();
-      if (await health.hasPermissions([HealthDataType.STEPS]) != true) {
-        stepsText = 'steps: no permission';
-        return;
-      }
-      final now = DateTime.now();
-      final total = await health.getTotalStepsInInterval(DateTime(now.year, now.month, now.day), now);
-      stepsText = 'steps: ${total ?? 0}';
-    } catch (e) {
-      stepsText = 'steps: ${e.runtimeType}';
-    }
-  }
 }
 
 /// Renders the world into a low-resolution image, then draws it through the grade shader.
+/// A second low-resolution image, the light mask, holds only the layers that lights may reach.
 class GradePostProcess extends PostProcess {
   GradePostProcess(ui.FragmentProgram program) : shader = program.fragmentShader(), super(pixelRatio: 1);
 
   final ui.FragmentShader shader;
   double timeOfDay = 0.5;
+  bool maskPass = false;
+
+  /// x, y in view pixels, radius in art pixels, strength 0 to 1.
+  final lights = [Vector4.zero(), Vector4.zero()];
 
   @override
   void postProcess(Vector2 size, Canvas canvas) {
     final scene = rasterizeSubtree();
+    maskPass = lightsMode == 'mask';
+    final mask = maskPass ? rasterizeSubtree() : scene;
+    maskPass = false;
     shader
       ..setFloat(0, size.x)
       ..setFloat(1, size.y)
       ..setFloat(2, scene.width.toDouble())
       ..setFloat(3, scene.height.toDouble())
-      ..setFloat(4, timeOfDay)
-      ..setImageSampler(0, scene);
+      ..setFloat(4, timeOfDay);
+    var i = 5;
+    for (final l in lights) {
+      shader
+        ..setFloat(i++, l.x)
+        ..setFloat(i++, l.y)
+        ..setFloat(i++, l.z)
+        ..setFloat(i++, l.w);
+    }
+    shader
+      ..setImageSampler(0, scene)
+      ..setImageSampler(1, mask);
     canvas.drawRect(Offset.zero & size.toSize(), Paint()..shader = shader);
+    if (!identical(mask, scene)) {
+      mask.dispose();
+    }
     scene.dispose();
+  }
+}
+
+/// A parallax layer. Far layers (sky, hills) are skipped while the light mask is drawn.
+class Layer extends SpriteComponent {
+  Layer(this.game, Sprite sprite, {required this.lit}) : super(sprite: sprite);
+
+  final SpikeGame game;
+  final bool lit;
+
+  @override
+  void render(Canvas canvas) {
+    if (game.grade.maskPass && !lit) {
+      return;
+    }
+    super.render(canvas);
+  }
+}
+
+/// Placeholder campfire, drawn as rectangles so the spike needs no new art.
+class Props extends Component {
+  Props(this.game);
+
+  final SpikeGame game;
+
+  static Paint _c(int argb) => Paint()..color = Color(argb);
+  final _log = _c(0xFF4A3222), _flame = _c(0xFFFF8A2A), _core = _c(0xFFFFE27A);
+
+  @override
+  void render(Canvas canvas) {
+    canvas.drawRect(Rect.fromLTWH(firePos.x - 6, firePos.y + 6, 12, 2), _log);
+    final tall = (game.elapsed * 8).floor().isEven ? 7.0 : 5.0;
+    canvas.drawRect(Rect.fromLTWH(firePos.x - 3, firePos.y + 6 - tall, 6, tall), _flame);
+    canvas.drawRect(Rect.fromLTWH(firePos.x - 1, firePos.y + 3, 2, 3), _core);
   }
 }
 
