@@ -7,7 +7,8 @@ Every art pixel stores a palette index, not a colour:
   red   = index * 4
   green = 255 where firelight may reach the pixel, else 0
 The shader looks the index up in assets/images/palette.png, which is 64 entries wide and has one row
-per time of day (night, dawn, day, dusk) plus one row of firelit colours.
+per time of day (night, dawn, day, dusk) plus one row of firelit colours. That block of five rows is
+repeated once per season (spring, summer, autumn, winter), each built from its own daytime colours.
 """
 import math
 import random
@@ -43,6 +44,12 @@ DAY = {
     # Added for the finer art (two art pixels per unit): shades and lights for detail.
     "tree_dark": (30, 68, 66), "hill_snow": (228, 236, 240), "hill_shade": (116, 150, 168),
     "bank_dark": (76, 114, 74), "roof_light": (116, 94, 116), "wall_light": (166, 122, 86), "coat_shade": (158, 72, 60),
+    # Added for the seasons pass. Leaves that turn and fall have entries of their own (two kinds of tree),
+    # so a season can recolour them without touching the coat, the scarf or the cabin, which the gold and
+    # rust leaves used to share. Snow that lies on things is its own pair.
+    "leaf": (58, 112, 70), "leaf_light": (104, 150, 84), "leaf_dark": (36, 78, 62),
+    "leaf2": (92, 128, 62), "leaf2_light": (142, 168, 84), "leaf2_dark": (62, 96, 58),
+    "snow": (240, 245, 250), "snow_shade": (198, 212, 232),
 }
 NAMES = list(DAY)
 INDEX = {n: i + 1 for i, n in enumerate(NAMES)}
@@ -100,13 +107,45 @@ WATER_ROWS = {  # tint, highlight
     "lit": ((70, 120, 160), (220, 236, 244)),
 }
 
-palette = Image.new("RGB", (64, len(ROWS)))
-for y, (row, fn) in enumerate(ROWS):
-    for name in NAMES:
-        c = OVERRIDE[row].get(name) or (DAY[name] if name in ("flame", "core") else fn(DAY[name]))
-        palette.putpixel((INDEX[name], y), c)
-    palette.putpixel((WATER_TINT, y), WATER_ROWS[row][0])
-    palette.putpixel((WATER_HI, y), WATER_ROWS[row][1])
+# A season is a short list of daytime colours that differ from summer's. Its night, dawn, dusk and firelit
+# rows come from the same re-colourings as summer's, so nothing is hand-picked per season and time of day.
+SEASONS = [
+    ("spring", {
+        "leaf": (92, 156, 88), "leaf_light": (156, 204, 112), "leaf_dark": (54, 112, 76),
+        "leaf2": (236, 156, 176), "leaf2_light": (252, 218, 224), "leaf2_dark": (192, 108, 140),  # blossom
+        "bank_top": (152, 198, 104), "bank": (108, 158, 86), "tuft": (190, 222, 122), "tree_light": (90, 142, 92),
+    }),
+    ("summer", {}),
+    ("autumn", {
+        "leaf": (204, 150, 60), "leaf_light": (242, 198, 86), "leaf_dark": (152, 100, 56),
+        "leaf2": (196, 92, 66), "leaf2_light": (230, 136, 70), "leaf2_dark": (146, 64, 58),
+        "bank_top": (168, 162, 92), "bank": (130, 130, 78), "tuft": (204, 184, 104), "bank_dark": (100, 100, 68),
+        "hill_near": (122, 136, 122), "sky1": (104, 156, 208),
+    }),
+    ("winter", {
+        # Leaves still drawn on a tree that sheds them become dead brown with snow on top.
+        "leaf": (124, 106, 104), "leaf_light": (236, 242, 248), "leaf_dark": (92, 78, 86),
+        "leaf2": (136, 112, 100), "leaf2_light": (236, 242, 248), "leaf2_dark": (98, 80, 82),
+        "tree": (40, 82, 80), "tree_light": (222, 232, 244),  # snow on the lit side of every bough
+        "bank_top": (238, 244, 250), "bank": (214, 226, 240), "tuft": (248, 250, 254), "bank_dark": (184, 200, 224),
+        "bank_face": (110, 100, 102), "roof": (204, 216, 234), "roof_light": (242, 246, 252),
+        "hill_far": (176, 198, 214), "hill_near": (136, 162, 174), "hill_shade": (150, 174, 198),
+        "sky1": (116, 162, 208), "sky2": (140, 180, 216), "sky3": (170, 202, 226), "sky4": (200, 222, 234),
+    }),
+]
+SEASON_WATER = {"winter": {"day": ((104, 140, 168), (236, 244, 250))}}
+
+palette = Image.new("RGB", (64, len(ROWS) * len(SEASONS)))
+for s, (season, change) in enumerate(SEASONS):
+    day = {**DAY, **change}
+    for r, (row, fn) in enumerate(ROWS):
+        y = s * len(ROWS) + r
+        for name in NAMES:
+            c = OVERRIDE[row].get(name) or (day[name] if name in ("flame", "core") else fn(day[name]))
+            palette.putpixel((INDEX[name], y), c)
+        tint, hi = SEASON_WATER.get(season, {}).get(row, WATER_ROWS[row])
+        palette.putpixel((WATER_TINT, y), tint)
+        palette.putpixel((WATER_HI, y), hi)
 palette.save("assets/images/palette.png")
 
 
@@ -327,24 +366,21 @@ save(hills, "hills", native=True)
 
 # Trees, in art pixels: three kinds (open-boughed conifers, round-crowned trees, thin sparse ones) in mixed
 # sizes, some golden, with undergrowth in front and a darker row of plain shapes behind.
-trees = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
-d = ImageDraw.Draw(trees)
 # The forest stops where the land does. This layer moves at 0.6 of the camera, so its end is placed to line
 # up with the shore when the shore is mid-screen; past it there are only the hills and the water.
 FOREST_END = 342
 FLOOR = 190 * S
-d.polygon([(0, FLOOR), (FOREST_END * S, FLOOR), (FOREST_END * S + 24, WATER * S), (FOREST_END * S + 24, H * S), (0, H * S)],
-          fill=c("tree"))
 rt = random.Random(5)
 
 
-GREEN = ("tree", "tree_light", "tree_dark")
-GOLD = ("tree_gold", "scarf", "wall_light")
-RUST = ("coat", "tree_gold", "coat_shade")
+GREEN = ("tree", "tree_light", "tree_dark")  # evergreen: conifers, and bushes that keep their leaves
+LEAF = ("leaf", "leaf_light", "leaf_dark")  # trees that turn and shed
+LEAF2 = ("leaf2", "leaf2_light", "leaf2_dark")  # a second kind that turns a different colour
 FLAT = ("tree_dark", None, None)  # the row behind: shapes only
 
 
-TARGET = trees  # the layer that tput, clump and rock draw on
+TARGET = None  # the layer that tput, clump and rock draw on
+BARE = False  # drawing the leafless version of the trees that shed
 
 
 def tput(x, y, name):
@@ -379,6 +415,20 @@ def clump(cx, cy, rx, ry, tones):
                 elif lit < -0.5 + 0.25 * patch or v > 0.7:
                     name = dark
             tput(x, y, name)
+
+
+def crown(cx, cy, rx, ry, tones, limb=None):
+    """Leaves on a tree. In the bare drawing a tree that sheds gets the limb that carried them and a few twigs."""
+    if not (BARE and tones in (LEAF, LEAF2)):
+        clump(cx, cy, rx, ry, tones)
+        return
+    foot = cy + ry * 0.4
+    if limb:
+        branch(limb[0], limb[1], cx, foot, "trunk", 2)
+    for k in range(3 + int(rx / 6)):
+        turn = -math.pi * (0.12 + 0.76 * grain(int(cx), int(cy), 30 + k))  # a fan pointing up
+        long = 0.5 + 0.6 * grain(int(cx), int(cy), 40 + k)
+        branch(cx, foot, cx + math.cos(turn) * rx * long, foot + math.sin(turn) * ry * 1.5 * long, "log")
 
 
 def trunk(x, base, top, wide, bend=0.0, plain=None):
@@ -449,9 +499,10 @@ def broadleaf(x, h, tones):
         branch(centre.get(y0, x), y0, x + side * wide * 0.6, cy + tall * 0.1, plain or "trunk", 2)
     spots = [(rt.uniform(-1, 1), rt.uniform(-1, 1)) for _ in range(40)]
     spots = sorted([sp for sp in spots if math.hypot(*sp) <= 1][:int(9 + h / 22)], key=lambda sp: -sp[1])
+    fork = int(cy + tall * 0.5)
     for u, v in spots:  # lowest first, so the upper clumps overlap them
         r = rt.uniform(0.3, 0.5) * wide
-        clump(x + u * wide * 0.75, cy + v * tall * 0.75, r, r * rt.uniform(0.7, 0.95), tones)
+        crown(x + u * wide * 0.75, cy + v * tall * 0.75, r, r * rt.uniform(0.7, 0.95), tones, (centre.get(fork, x), fork))
 
 
 def sparse(x, h, tones):
@@ -468,8 +519,8 @@ def sparse(x, h, tones):
         for _ in range(rt.randint(1, 3)):
             t = rt.uniform(0.5, 1.0)
             r = rt.uniform(2.5, 6)
-            clump(centre.get(y0, x) + (x1 - centre.get(y0, x)) * t, y0 + (y1 - y0) * t - 2, r, r * 0.8, tones)
-    clump(centre.get(top, x), top, 5, 4, tones)
+            crown(centre.get(y0, x) + (x1 - centre.get(y0, x)) * t, y0 + (y1 - y0) * t - 2, r, r * 0.8, tones)
+    crown(centre.get(top, x), top, 5, 4, tones)
 
 
 def shrub(x, tones):
@@ -483,22 +534,40 @@ KINDS = [(spruce, 0.5), (broadleaf, 0.8), (sparse, 1.0)]
 
 def plant(x, h, tones):
     roll = rt.random()
-    next(kind for kind, share in KINDS if roll <= share)(x, h, tones)
+    kind = next(kind for kind, share in KINDS if roll <= share)
+    if tones is not FLAT:  # the species decides: conifers are evergreen, the others shed
+        tones = GREEN if kind is spruce else tones
+    kind(x, h, tones)
 
 
-x = 6
-while x < FOREST_END * S - 30:
-    plant(x, rt.randint(110, 230), FLAT)
-    x += rt.randint(24, 44)
-x = 20
-while x < FOREST_END * S - 44:
-    plant(x, rt.randint(130, 300), GOLD if rt.random() < 0.25 else GREEN)
-    x += rt.randint(40, 72)
-x = 10
-while x < FOREST_END * S - 20:  # undergrowth in front of the trunks
-    shrub(x, rt.choice([GREEN, GREEN, GOLD, RUST]))
-    x += rt.randint(34, 80)
+def forest(bare):
+    """The tree layer. The bare version is the same forest, tree for tree, with the shedding kinds leafless."""
+    global TARGET, BARE, rt
+    img = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
+    ImageDraw.Draw(img).polygon(
+        [(0, FLOOR), (FOREST_END * S, FLOOR), (FOREST_END * S + 24, WATER * S), (FOREST_END * S + 24, H * S), (0, H * S)],
+        fill=c("tree"))
+    TARGET, BARE, rt = img, bare, random.Random(5)
+    x = 6
+    while x < FOREST_END * S - 30:
+        plant(x, rt.randint(110, 230), FLAT)
+        x += rt.randint(24, 44)
+    x = 20
+    while x < FOREST_END * S - 44:
+        plant(x, rt.randint(130, 300), LEAF2 if rt.random() < 0.25 else LEAF)
+        x += rt.randint(40, 72)
+    x = 10
+    while x < FOREST_END * S - 20:  # undergrowth in front of the trunks
+        shrub(x, rt.choice([GREEN, GREEN, LEAF, LEAF2]))
+        x += rt.randint(34, 80)
+    BARE = False
+    return img
+
+
+trees = forest(False)
+trees_bare = forest(True)
 save(trees, "trees", native=True)
+save(trees_bare, "trees_bare", native=True)
 
 # The bank and a cabin (the dog is its own sprite, further down). Below the waterline the shader shows the
 # reflection instead, except where a pixel is marked as afloat.
@@ -539,9 +608,9 @@ d.rectangle([TREE - 4, BANK - 40, TREE + 3, BANK], fill=c("trunk"))
 d.line([TREE - 4, BANK - 40, TREE - 4, BANK], fill=c("door"))
 CROWN = [(TREE, BANK - 52, 26, 16), (TREE - 10, BANK - 66, 18, 14), (TREE + 9, BANK - 72, 17, 13), (TREE, BANK - 84, 13, 10)]
 for cx, cy, rx, ry in CROWN:
-    d.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=c("tree"))
+    d.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=c("leaf"))
 for cx, cy, rx, ry in CROWN:  # lighter on top, so it stands out from the dark forest behind it
-    d.ellipse([cx - rx + 2, cy - ry, cx + rx - 5, cy + ry - 8], fill=c("tree_light"))
+    d.ellipse([cx - rx + 2, cy - ry, cx + rx - 5, cy + ry - 8], fill=c("leaf_light"))
 # Screen 3: a pebble shore, the place for skipping stones.
 d.rectangle([282, BANK, 352, WATER - 1], fill=c("rope"))
 for _ in range(90):
@@ -608,8 +677,8 @@ d.rectangle([131, B2 - 20, 132, B2 - 18], fill=c("scarf"))  # door handle
 speckle(ground, (464, B2 - 26, 530, B2), c("tarp_shade"), ["ash", "tarp"], 60, 3, rg)
 speckle(ground, (464, B2 - 26, 530, B2), c("tarp"), ["moon_shade", "tarp_shade"], 40, 2, rg)
 T2 = TREE * S
-speckle(ground, (T2 - 60, B2 - 190, T2 + 60, B2 - 60), c("tree_light"), ["tree", "tuft", "tree"], 900, 3, rg)
-speckle(ground, (T2 - 60, B2 - 190, T2 + 60, B2 - 60), c("tree"), ["tree_dark", "tree_dark", "tree_light"], 700, 3, rg)
+speckle(ground, (T2 - 60, B2 - 190, T2 + 60, B2 - 60), c("leaf_light"), ["leaf", "leaf_dark", "leaf"], 900, 3, rg)
+speckle(ground, (T2 - 60, B2 - 190, T2 + 60, B2 - 60), c("leaf"), ["leaf_dark", "leaf_dark", "leaf_light"], 700, 3, rg)
 for x in (T2 - 5, T2 - 1, T2 + 3):
     for y in range(B2 - 80, B2, 9):
         d.line([x + rg.randint(-1, 1), y, x + rg.randint(-1, 1), y + rg.randint(3, 7)], fill=c("log"))
@@ -743,7 +812,7 @@ for x in range(20, LAND - 40, 1):
             rock(x + rd.randint(12, 20), base + 2, rd.randint(8, 14), rd.randint(5, 9))
         tussock(x - 8, base + 2, 7)
     elif kind < 0.75:
-        tones = rd.choice([GREEN, GREEN, GOLD, RUST])
+        tones = rd.choice([GREEN, GREEN, LEAF, LEAF2])
         for _ in range(rd.randint(2, 3)):
             r = rd.uniform(7, 12)
             clump(x + rd.uniform(-9, 9), base - r * 0.6, r, r * 0.8, tones)
@@ -772,25 +841,73 @@ while x < LAND - 30:
         if rd.random() < 0.6:
             rock(x + rd.randint(14, 24), W2 + rd.randint(3, 9), rd.randint(8, 16), rd.randint(4, 8))
     else:
-        tones = rd.choice([GREEN, GOLD, RUST])
+        tones = rd.choice([GREEN, LEAF, LEAF2])
         r = rd.uniform(7, 11)
         clump(x, W2 - r * 0.5, r, r * 0.7, tones)
     x += rd.randint(26, 76)
 for x in (150, 470, 760, 1010, LAND + 20, LAND + 70):  # stones out in the shallows
     rock(x, W2 + rd.randint(12, 22), rd.randint(12, 22), rd.randint(4, 7))
-# Two trees on the near edge of the bank. The character walks behind their trunks.
-for x, tall, tones in ((500, 250, GREEN), (990, 215, GOLD)):
-    base = W2 - 4
-    centre = trunk(x, base, base - tall, 13, rd.uniform(-5, 5))
-    for side, up in ((-1, 0.55), (1, 0.66), (-1, 0.8)):
-        y0 = int(base - tall * up)
-        branch(centre[y0], y0, x + side * 30, y0 - 22, "trunk", 2)
-        clump(x + side * 32, y0 - 26, 20, 13, tones)
-    for u, v, r in ((-0.7, 0.2, 22), (0.75, 0.1, 24), (-0.3, -0.25, 26), (0.35, -0.4, 24), (0, -0.75, 20), (0, 0.25, 22)):
-        clump(x + u * 42, base - tall + 14 + v * 36, r, r * 0.8, tones)
-    tussock(x - 9, base + 3, 8)
-    tussock(x + 10, base + 2, 7)
+# Two trees on the near edge of the bank. The character walks behind their trunks. Both shed, so the
+# layer is saved twice: in leaf and bare.
+def near_trees():
+    for x, tall, tones in ((500, 250, LEAF), (990, 215, LEAF2)):
+        base = W2 - 4
+        centre = trunk(x, base, base - tall, 13, rd.uniform(-5, 5))
+        for side, up in ((-1, 0.55), (1, 0.66), (-1, 0.8)):
+            y0 = int(base - tall * up)
+            branch(centre[y0], y0, x + side * 30, y0 - 22, "trunk", 2)
+            crown(x + side * 32, y0 - 26, 20, 13, tones)
+        fork = int(base - tall + 34)
+        for u, v, r in ((-0.7, 0.2, 22), (0.75, 0.1, 24), (-0.3, -0.25, 26), (0.35, -0.4, 24), (0, -0.75, 20), (0, 0.25, 22)):
+            crown(x + u * 42, base - tall + 14 + v * 36, r, r * 0.8, tones, (centre[fork], fork))
+        tussock(x - 9, base + 3, 8)
+        tussock(x + 10, base + 2, 7)
+
+
+front_bare, state = front.copy(), rd.getstate()
+near_trees()
 save(front, "front", native=True)
+rd.setstate(state)
+TARGET, BARE = front_bare, True
+near_trees()
+BARE = False
+save(front_bare, "front_bare", native=True)
+
+# Lying snow, as one overlay per layer, worked out from the art and not drawn by hand: wherever something
+# that can hold snow has open air (or grass) above it, its top few pixels turn to snow. Upright edges
+# are left alone, and so is anything one pixel thick. Grass, boughs and the roof get their snow from the
+# winter palette instead. Each overlay keeps the firelight and afloat marks of the pixel it covers.
+HOLDS = {INDEX[n] for n in ("tarp", "tarp_shade", "ash", "log", "trunk", "wall", "wall_shade", "wall_light", "door",
+                            "roof", "roof_light", "rope", "dog_shade")}
+
+
+def snow_on(img, deep=3):
+    w, h = img.size
+    src, out = img.load(), Image.new("RGBA", img.size, (0, 0, 0, 0))
+    o = out.load()
+
+    def holds(x, y):
+        return 0 <= x < w and 0 <= y < h and src[x, y][3] and src[x, y][0] // 4 in HOLDS
+
+    for x in range(w):
+        for y in range(1, h - 1):
+            if not holds(x, y) or holds(x, y - 1) or src[x, y - 1][0] // 4 == INDEX["window"]:
+                continue  # not a top edge, or a bar across the window
+            # An upright edge: the thing climbs on one side and falls straight away on the other.
+            if any(holds(x + side, y - 1) and not holds(x - side, y + 2) for side in (-1, 1)):
+                continue
+            lie = deep - (grain(x // 3, 0, 21) < 0.4) + (grain(x // 5, 1, 22) < 0.25)
+            for k in range(lie):
+                if not holds(x, y + k + 1):
+                    break  # always leave some of the thing showing under its snow
+                under = src[x, y + k]
+                o[x, y + k] = (INDEX["snow_shade" if k and k == lie - 1 else "snow"] * 4, under[1], under[2], 255)
+    return out
+
+
+save(snow_on(trees_bare, 2), "trees_snow", native=True)
+save(snow_on(ground), "ground_snow", native=True)
+save(snow_on(front_bare), "front_snow", native=True)
 
 # Dormant and flourishing pieces, drawn over the same cabin and bank. World position is in main.dart.
 # A tarp over the whole cabin: 66x54, placed at (40, BANK - 53).

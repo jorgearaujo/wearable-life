@@ -412,3 +412,44 @@ Limits:
 - The clouds do not thicken or change in rain or fog; in rain they keep drifting as they are.
 - Checked in the emulator by day: five of the six idle acts, the dog following and sitting, a walk behind the first front tree, clouds drifting. Not checked: the idle stone throw, night, rain, the second front tree, the dock. No frame rate measured on the phone.
 - `--dart-define=IDLE_AFTER=1` shortens the wait and `IDLE_FIRST=n` picks which act comes first, for testing.
+
+## Seasons from one set of art (2026-11-11)
+
+**Question:** can the same drawings become spring, summer, autumn and winter by changing the palette, on top of the time-of-day recolouring? Where does the palette stop being enough?
+
+**Answer: yes for colour, at every time of day, with three more floats in the shader. No for bare trees, which need a second drawing. Snow is mostly palette; a thin overlay made by the art script adds the rest.**
+
+How it works:
+
+- The palette image went from 5 rows to 20: the same five rows (night, dawn, day, dusk, firelit) once per season. Each season is a short list of daytime colours that differ from summer; its night, dawn, dusk and firelit rows come from the same recolouring ramps as before. Nothing was picked by hand per season and time.
+- The shader takes one more value, `uSeason` (block A, block B, mix), and looks up the row inside that block. A season change fades over 1.5 seconds.
+- Foliage that changes with the season has its own palette entries (`leaf`, `leaf2`, three tones each), apart from the evergreen entries. Spruces stay green; the others turn pink or pale green in spring, gold or rust in autumn.
+- Winter by palette alone: grass turns white, the roof and the lit side of spruce boughs turn to snow, the hills go paler, the water greyer.
+- Bare trees are a second drawing of the tree layer and the front layer (`trees_bare.png`, `front_bare.png`), made from the same seeded forest so trunks stand where they stood. The game swaps the sprite.
+- Lying snow is one overlay per layer (`trees_snow.png`, `ground_snow.png`, `front_snow.png`), made by the script: it caps the top edges of rocks, logs, limbs, walls and the dock. It is switched on or off.
+- Tap the square in the top right corner to step through: spring, summer, autumn, autumn with bare trees, winter by palette only, winter with bare trees and lying snow. `--dart-define=SEASON=5` starts on one of them.
+
+What it showed:
+
+| Part | Result |
+|---|---|
+| Four seasons by day | All read at a glance from the same art. |
+| Night, dawn, dusk | The season blocks pass through the time-of-day rows cleanly. Winter nights give blue moonlit snow; firelight stays warm on it. Autumn colour is faint at night, as it should be. |
+| Palette-only winter | Good for ground, roof and spruces. Shedding trees stay as brown crowns with a snow cap: wrong. |
+| Bare trees | Need the second drawing. A palette cannot take leaves away. |
+| Snow overlay | Subtle. Most of the winter look comes from the palette. |
+
+What real art must do:
+
+- **Give anything that changes with the season its own palette entries.** The first try failed because the autumn-coloured trees shared entries with the scarf, the coat and the cabin wall. The 64-entry palette is now full; real art needs a budget for seasonal entries from the start.
+- Decide per species what is evergreen and what sheds.
+- Draw shedding trees twice (in leaf, bare). The swap is instant, because indices cannot be half shown; a gradual leaf fall would need in-between drawings or falling-leaf particles to cover it.
+
+Limits:
+
+- The big tree on the bank is part of the ground layer and has no bare version, so it keeps its leaves in the bare states.
+- The pebble shore stays tan in winter (shared entry), the pool and lake do not freeze, the dark forest floor and the far row of trees stay green all year.
+- The cream dog is hard to see on snow.
+- Summer looks different from earlier builds: no gold trees or rust bushes.
+- Not tried: falling leaves, snowfall, season from the date and hemisphere, outfits. The first two are particles like rain, already shown to work; the third is plain logic for the real app.
+- Checked on the emulator, release build, at noon, midnight and late dusk, all six states, standing by the cabin. Dawn, rain, fog and the rest of the map were seen only in the Python preview or not at all. Not installed on the Pixel 7a; no frame rate measured (the shader reads the palette twice as often, and winter adds three full-size sprites).

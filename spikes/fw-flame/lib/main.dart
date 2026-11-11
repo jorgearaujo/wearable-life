@@ -50,6 +50,34 @@ const holds = <(String, double, int)>[
   ('night fog', 0, 2),
 ];
 
+/// Tap the top right corner to step through these: (name, palette block, bare trees, lying snow).
+/// The palette has one block of rows per season. Bare trees are a second drawing of the tree and front
+/// layers; lying snow is one overlay per layer. --dart-define=SEASON=5 starts on one of them.
+const seasons = <(String, int, bool, bool)>[
+  ('spring', 0, false, false),
+  ('summer', 1, false, false),
+  ('autumn', 2, false, false),
+  ('autumn, bare trees', 2, true, false),
+  ('winter, palette only', 3, false, false),
+  ('winter, bare trees and lying snow', 3, true, true),
+];
+
+/// Tap the square left of the season square to step through these:
+/// (name, rain, heavy, hail, snow, blizzard, wind), each 0 to 1. The first leaves the weather to the sky
+/// tap (clear, rain, fog). --dart-define=WEATHER=4 starts on one of them.
+const weathers = <(String, double, double, double, double, double, double)>[
+  ('as the sky tap says', 0, 0, 0, 0, 0, 0),
+  ('heavy rain', 1, 1, 0, 0, 0, 0.3),
+  ('hail', 1, 0.5, 1, 0, 0, 0),
+  ('snowfall', 0, 0, 0, 1, 0, 0),
+  ('blizzard', 0, 0, 0, 1, 1, 1),
+  ('strong wind', 0, 0, 0, 0, 0, 1),
+];
+const leafColours = [
+  [Color(0xFFE0A030), Color(0xFFC8642D), Color(0xFF96502D)], // autumn
+  [Color(0xFF78A046), Color(0xFF5A8C3C), Color(0xFF96AA50)], // the rest of the year
+];
+
 /// Palette rows: 0 night, 1 dawn, 2 day, 3 dusk. Each key is (time of day, row); between keys the two
 /// rows are mixed, so day and night hold steady and dawn and dusk pass through.
 const paletteKeys = <(double, double)>[(0, 0), (0.2, 0), (0.27, 1), (0.36, 2), (0.64, 2), (0.74, 3), (0.82, 0), (1, 0)];
@@ -165,6 +193,12 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
   final PixelFit fit;
   final ui.Image palette;
   int hold = const int.fromEnvironment('HOLD');
+  int season = const int.fromEnvironment('SEASON', defaultValue: 1);
+  int weather = const int.fromEnvironment('WEATHER');
+  double cloudClock = 0; // runs faster in wind
+  late final SwayLayer treeLayer, frontLayer;
+  late final List<Sprite> treeSprites, frontSprites; // in leaf, bare
+  final snow = <SwayLayer>[];
 
   final ui.FragmentProgram program;
   late final GradePostProcess grade;
@@ -211,9 +245,15 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
 
     final half = Vector2.all(1 / zoom); // art is drawn at [zoom] pixels a unit
     for (final (name, factor) in [('sky', 0.0), ('hills', 0.3), ('trees', 0.6), ('ground', 1.0)]) {
-      final layer = SpriteComponent(sprite: await loadSprite('$name.png'), scale: half);
+      final layer = SwayLayer(sprite: await loadSprite('$name.png'), scale: half);
       layers.add((layer, factor));
       world.add(layer);
+      if (name == 'trees') {
+        treeLayer = layer..reach = 4;
+        treeSprites = [layer.sprite!, await loadSprite('trees_bare.png')];
+        await _snowOver('trees_snow', factor);
+      }
+      if (name == 'ground') await _snowOver('ground_snow', factor);
       if (name == 'sky') {
         // Sun and moon sit between the sky and the hills, so they rise and set behind the ridge.
         sun = SpriteComponent(sprite: await loadSprite('sun.png'), scale: half);
@@ -241,15 +281,22 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     world.add(Wildlife(this, await images.load('duck.png'), await images.load('squirrel.png')));
     world.add(stones);
     // Rocks and grass nearer than the character: drawn over it, and moving with the ground.
-    final front = SpriteComponent(sprite: await loadSprite('front.png'), scale: half);
+    final front = SwayLayer(sprite: await loadSprite('front.png'), scale: half)..reach = 6;
     layers.add((front, 1.0));
     world.add(front);
+    frontLayer = front;
+    frontSprites = [front.sprite!, await loadSprite('front_bare.png')];
+    await _snowOver('front_snow', 1.0);
 
     camera = CameraComponent.withFixedResolution(width: fit.viewW, height: fit.viewH, world: world);
     camera.viewfinder.anchor = Anchor.topLeft;
     camera.viewfinder.zoom = zoom;
     camera.viewfinder.position = Vector2(camLeft, fit.viewTop);
     grade = GradePostProcess(program, palette);
+    _showSeason();
+    grade
+      ..seasonA = grade.seasonB
+      ..seasonMix = 1;
     camera.postProcess = grade;
     // The interface is an ordinary component outside the camera, so the shader never touches it.
     final sheet = await images.load('ui.png');
@@ -258,6 +305,40 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     camera.priority = 0;
     add(hud..priority = 10);
     _pan(0);
+  }
+
+  /// Lying snow for one layer: a sprite of its own, drawn straight over that layer and moving with it.
+  Future<void> _snowOver(String name, double factor) async {
+    final layer = SwayLayer(sprite: await loadSprite('$name.png'), scale: Vector2.all(1 / zoom))
+      ..reach = name == 'trees_snow'
+          ? 4
+          : name == 'front_snow'
+          ? 6
+          : 0;
+    layers.add((layer, factor));
+    snow.add(layer);
+    world.add(layer);
+  }
+
+  /// The drawings swap at once (indices cannot be half shown); the palette fades to the new season.
+  void _showSeason() {
+    final (_, block, bare, snowy) = seasons[season];
+    treeLayer.sprite = treeSprites[bare ? 1 : 0];
+    frontLayer.sprite = frontSprites[bare ? 1 : 0];
+    for (final layer in snow) {
+      layer.opacity = snowy ? 1 : 0;
+    }
+    // Wind carries leaves off trees that have them: many in autumn, a few in spring and summer, none in winter.
+    grade
+      ..leafy = block == 3
+          ? 0
+          : block == 2
+          ? (bare ? 0.4 : 1)
+          : 0.25
+      ..autumn = block == 2
+      ..seasonA = grade.seasonMix < 0.5 ? grade.seasonA : grade.seasonB
+      ..seasonB = block.toDouble()
+      ..seasonMix = 0;
   }
 
   @override
@@ -273,6 +354,11 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     final row = ((vy - Hud.metersTop) / 9).floor();
     if (vx < 48 && row >= 0 && row < 3) {
       hud.say(meterReasons[row]);
+    } else if (vx > viewW - 14 && vy < 18) {
+      season = (season + 1) % seasons.length;
+      _showSeason();
+    } else if (vx > viewW - 28 && vy < 18) {
+      weather = (weather + 1) % weathers.length;
     } else if (moon.opacity > 0 && (wx - moon.x - 17).abs() < 14 && (wy - moon.y - 17).abs() < 14) {
       // The real phase comes from the date; here a tap steps through the eight drawn frames.
       moonPhase = (moonPhase + 1) % 8;
@@ -379,10 +465,26 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
       ..rainColour = Color.lerp(rainColours[rowA.toInt()], rainColours[rowB.toInt()], mix)!
       ..elapsed = elapsed
       ..camX = camera.viewfinder.position.x;
+    grade.seasonMix = min(1, grade.seasonMix + dt / 1.5);
     // Weather fades in and out over about a second.
-    final weather = holds[hold].$3;
-    grade.rain = (grade.rain + (weather == 1 ? dt : -dt)).clamp(0.0, 1.0);
-    grade.fog = (grade.fog + (weather == 2 ? dt : -dt)).clamp(0.0, 1.0);
+    final sky = weather == 0 ? holds[hold].$3 : 0;
+    final (_, rain, heavy, hail, snowing, blizzard, wind) = weathers[weather];
+    double toward(double v, double target) => v + (target - v).clamp(-dt, dt);
+    grade
+      ..rain = toward(grade.rain, sky == 1 ? 1 : rain)
+      ..fog = toward(grade.fog, sky == 2 ? 1 : 0)
+      ..heavy = toward(grade.heavy, heavy)
+      ..hail = toward(grade.hail, hail)
+      ..snow = toward(grade.snow, snowing)
+      ..blizzard = toward(grade.blizzard, blizzard)
+      ..wind = toward(grade.wind, wind)
+      ..ground = bankY - camera.viewfinder.position.y;
+    cloudClock += dt * (1 + 6 * grade.wind);
+    // Trees lean with the wind in gusts, stepping 8 times a second like everything else.
+    final gust = 0.6 + 0.4 * sin((elapsed * 8).floor() * 0.45);
+    for (final layer in [treeLayer, frontLayer, ...snow]) {
+      layer.lean = grade.wind * gust;
+    }
     // Flicker in steps, about 8 times a second, so the glow jumps like pixel art and does not pulse smoothly.
     final step = (elapsed * 8).floor();
     final flicker = 0.85 + 0.15 * sin(step * 12.9898).abs();
@@ -408,6 +510,8 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
           '${fps.round()} fps  worst ${worstMs.round()} ms\n'
           'view ${fit.viewW.round()}x${fit.viewH.round()} px, ${viewW.round()} units  ${holds[hold].$1}\n'
           'at ${hero.x.floor()} of ${walkMax.round()}  walking ${walkSpeeds[speed].round()} px/s\n'
+          'season: ${seasons[season].$1} (tap the top right square)\n'
+          'weather: ${weathers[weather].$1} (the square left of it)\n'
           'tap or hold: left or right of the character to walk\n'
           'tap: the character (speed), the dog, the water,\nthe cabin, the fire, the sky';
       worstMs = 0;
@@ -416,7 +520,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
 
   /// Places a sky body along its arc; [s] runs 0 to 1 from rising to setting, anything else is below ground.
   void _arc(SpriteComponent body, double s, double height, double left) {
-    final up = s >= 0 && s <= 1 && grade.rain < 0.5;
+    final up = s >= 0 && s <= 1 && grade.cover < 0.5;
     body.opacity = up ? 1 : 0;
     // Top-left of a 35 unit sprite, on whole art pixels: a centre anchor would land between them.
     body.position = Vector2(left + snap((viewW - 28) * s) - 3, snap(135 - sin(pi * s) * height));
@@ -447,11 +551,22 @@ class GradePostProcess extends PostProcess {
   final ui.Image palette;
   double rowA = 2, rowB = 2, mix = 0, dark = 0, waterline = 0, step = 0;
   double rain = 0, fog = 0, elapsed = 0, camX = 0;
+  double seasonA = 1, seasonB = 1, seasonMix = 1;
+  double heavy = 0, hail = 0, snow = 0, blizzard = 0, wind = 0;
+  double leafy = 0.25, ground = 0; // how many leaves the wind finds; the bank's line in the view
+  bool autumn = false;
+
+  /// Cloud that hides the sun, moon and stars.
+  double get cover => max(rain, snow);
   Color fogColour = fogColours[2], rainColour = rainColours[2];
 
   // Fixed random sets: (x, y, speed) per rain streak and (x, y, width, drift) per fog wisp.
   static final _rng = Random(7);
-  final _streaks = List.generate(120, (_) => (_rng.nextDouble(), _rng.nextDouble(), 150 + _rng.nextDouble() * 70));
+  final _flakes = List.generate(
+    400,
+    (_) => (_rng.nextDouble(), _rng.nextDouble(), _rng.nextDouble(), _rng.nextDouble()),
+  );
+  final _streaks = List.generate(300, (_) => (_rng.nextDouble(), _rng.nextDouble(), 150 + _rng.nextDouble() * 70));
   final _wisps = List.generate(
     11,
     (_) => (_rng.nextDouble(), _rng.nextDouble(), 50 + _rng.nextDouble() * 60, 2 + _rng.nextDouble() * 4),
@@ -475,8 +590,11 @@ class GradePostProcess extends PostProcess {
       dark,
       waterline * zoom,
       step,
-      max(rain, fog),
+      max(max(rain, fog), max(blizzard, 0.5 * snow)),
       camX * zoom,
+      seasonA,
+      seasonB,
+      seasonMix,
     ]) {
       shader.setFloat(i++, v);
     }
@@ -489,7 +607,7 @@ class GradePostProcess extends PostProcess {
       ..setImageSampler(0, scene)
       ..setImageSampler(1, palette);
     canvas.drawRect(Offset.zero & size.toSize(), Paint()..shader = shader);
-    if (rain > 0 || fog > 0) {
+    if (rain > 0 || fog > 0 || snow > 0 || wind > 0) {
       _weather(canvas, size, scene.width / zoom, scene.height / zoom);
     }
     scene.dispose();
@@ -545,10 +663,18 @@ class GradePostProcess extends PostProcess {
       final paint = Paint()
         ..isAntiAlias = false
         ..color = rainColour.withValues(alpha: 0.38 * rain);
-      for (final (x, y, speed) in _streaks) {
+      // Heavy rain: a darker sky, more than twice the streaks, faster and more slanted.
+      if (heavy > 0) {
+        canvas.drawRect(
+          Rect.fromLTWH(0, 0, w, h),
+          Paint()..color = const Color(0xFF1E2846).withValues(alpha: 0.2 * heavy * rain),
+        );
+        paint.color = rainColour.withValues(alpha: (0.38 + 0.14 * heavy) * rain);
+      }
+      for (final (x, y, speed) in _streaks.take(120 + (180 * heavy).round())) {
         // Fine slanted streaks, one art pixel wide and nine tall, stepping left twice on the way down.
-        final py = snap((y * (h + 8) + elapsed * speed) % (h + 8) - 8);
-        final px = snap((x * w - py * 0.25 - camX) % w);
+        final py = snap((y * (h + 8) + elapsed * speed * (1 + 0.4 * heavy)) % (h + 8) - 8);
+        final px = snap((x * w - py * (0.25 + 0.3 * heavy) - camX) % w);
         canvas.drawRect(Rect.fromLTWH(px, py, 0.5, 1.5), paint);
         canvas.drawRect(Rect.fromLTWH(px - 0.5, py + 1.5, 0.5, 1.5), paint);
         canvas.drawRect(Rect.fromLTWH(px - 1, py + 3, 0.5, 1.5), paint);
@@ -556,7 +682,7 @@ class GradePostProcess extends PostProcess {
       // Drops landing on the water: a bright dot, then a flat ring that widens and fades in three more steps.
       // Each ripple picks a new spot every time it restarts; spots are fixed to the world, not the screen.
       const life = 0.48;
-      for (var i = 0; i < 75; i++) {
+      for (var i = 0; i < 75 + (75 * heavy).round(); i++) {
         final phase = elapsed / life + i * 0.37;
         final cycle = phase.floor();
         final stage = ((phase - cycle) * 4).floor();
@@ -579,7 +705,107 @@ class GradePostProcess extends PostProcess {
         }
       }
     }
+    if (hail > 0) {
+      // Hailstones: bright pellets falling fast and nearly straight, then a small hop where they land.
+      final paint = Paint()
+        ..isAntiAlias = false
+        ..color = rainColour.withValues(alpha: hail);
+      for (final (x, y, _) in _streaks.take(70)) {
+        final py = snap((y * (h + 8) + elapsed * 300) % (h + 8) - 8);
+        final px = snap((x * w * 1.7 - py * 0.1 - camX) % w);
+        canvas.drawRect(Rect.fromLTWH(px, py, 0.5, 1), paint);
+      }
+      const life = 0.32;
+      for (var i = 0; i < 60; i++) {
+        final phase = elapsed / life + i * 0.29;
+        final cycle = phase.floor();
+        final stage = ((phase - cycle) * 4).floor();
+        final x = (_hash(i, cycle) * worldW - camX).floorToDouble() + stage * 0.5;
+        final y = (ground - 12 + _hash(i, cycle + 777) * 14).floorToDouble();
+        if (x < 0 || x > w) continue;
+        canvas.drawRect(Rect.fromLTWH(x, y - const [0.0, 1.5, 2.0, 1.0][stage], 0.5, 0.5), paint);
+      }
+    }
+    if (snow > 0) {
+      final paint = Paint()..isAntiAlias = false;
+      // A blizzard is a white-out: a thick veil, then the flakes driven sideways as short dashes.
+      if (blizzard > 0) {
+        canvas.drawRect(Rect.fromLTWH(0, 0, w, h), paint..color = fogColour.withValues(alpha: 0.5 * blizzard));
+        paint.color = fogColour.withValues(alpha: 0.16 * blizzard);
+        for (var n = 0; n < _wisps.length; n++) {
+          final (x, y, width, drift) = _wisps[n];
+          final span = w + width;
+          final left = (x * span - elapsed * drift * 22 - camX) % span - width;
+          canvas.drawRect(Rect.fromLTWH(snap(left), snap(y * h), snap(width), 3 + n % 4 * 2.0), paint);
+        }
+      }
+      // Calm snowfall: slow flakes that sway, near ones two art pixels across, far ones one and slower.
+      paint.color = rainColour.withValues(alpha: 0.92 * snow);
+      final count = 140 + (260 * blizzard).round();
+      for (var i = 0; i < count; i++) {
+        final (x, y, s, ph) = _flakes[i];
+        final near = i % 3 == 0;
+        final fall = (near ? 20 : 11) + s * 14 + blizzard * 26;
+        final side = (80 + s * 90) * blizzard;
+        final py = snap((y * h + elapsed * fall) % h);
+        final sway = sin(elapsed * 0.9 + ph * 6.28) * 3 * (1 - blizzard);
+        final px = snap((x * w + sway - elapsed * side - camX * (near ? 1 : 0.6)) % w);
+        canvas.drawRect(Rect.fromLTWH(px, py, (near ? 1 : 0.5) + blizzard, near && blizzard < 0.5 ? 1 : 0.5), paint);
+      }
+    }
+    if (wind > 0) {
+      final paint = Paint()..isAntiAlias = false;
+      // Gusts: a few thin pale lines that cross the view fast and fade at both ends of their run.
+      for (var i = 0; i < 10; i++) {
+        final phase = elapsed * 0.9 + i * 0.61;
+        final cycle = phase.floor();
+        final f = phase - cycle;
+        final x = w * (1.3 - f * 1.9) + _hash(i, cycle + 7) * w * 0.3;
+        paint.color = rainColour.withValues(alpha: 0.24 * wind * sin(pi * f));
+        canvas.drawRect(
+          Rect.fromLTWH(snap(x), snap(_hash(i, cycle) * h * 0.8), 8 + snap(_hash(i, cycle + 3) * 12), 0.5),
+          paint,
+        );
+      }
+      // Leaves torn off and carried across, tumbling: each flips between lying flat and standing on end.
+      final colours = leafColours[autumn ? 0 : 1];
+      final count = (90 * leafy * (1 - blizzard)).round();
+      for (var i = 0; i < count; i++) {
+        final (x, y, s, ph) = _flakes[i];
+        final px = snap((x * (w + 10) - elapsed * (70 + s * 60) - camX) % (w + 10) - 5);
+        final py = snap((y * h * 0.85 + sin(elapsed * 2 + ph * 6.28) * 6 + elapsed * (8 + s * 10)) % (h * 0.85));
+        final flat = (elapsed * 6 + ph * 10).floor().isEven;
+        paint.color = Color.lerp(colours[i % 3], const Color(0xFF28325A), 0.65 * dark)!.withValues(alpha: wind);
+        canvas.drawRect(Rect.fromLTWH(px, py, flat ? 1 : 0.5, flat ? 0.5 : 1), paint);
+      }
+    }
     canvas.restore();
+  }
+}
+
+/// A layer that can lean with the wind without new drawings: it is drawn in thin horizontal bands, and
+/// each band is pushed sideways by whole art pixels, more the higher it is above the bank. Feet stay put.
+class SwayLayer extends SpriteComponent {
+  SwayLayer({super.sprite, super.scale});
+
+  double reach = 0; // art pixels the top leans at full wind; 0 for a layer that never leans
+  double lean = 0; // 0 to 1, set every frame
+
+  @override
+  void render(Canvas canvas) {
+    final top = (reach * lean).round();
+    if (top == 0 || opacity == 0) {
+      super.render(canvas);
+      return;
+    }
+    const band = 4.0, groundRow = bankY * zoom, tall = 220.0;
+    final image = sprite!.image;
+    final wide = image.width.toDouble();
+    for (var row = 0.0; row < image.height; row += band) {
+      final up = ((groundRow - row) / tall).clamp(0.0, 1.0);
+      final shift = -(reach * lean * up * up).roundToDouble();
+      canvas.drawImageRect(image, Rect.fromLTWH(0, row, wide, band), Rect.fromLTWH(shift, row, wide, band), paint);
+    }
   }
 }
 
@@ -625,7 +851,7 @@ class Stars extends Component {
   @override
   void render(Canvas canvas) {
     final grade = game.grade;
-    if (grade.rain >= 0.5) {
+    if (grade.cover >= 0.5) {
       return; // rain clouds hide them, as they hide the sun and moon
     }
     final left = game.camera.viewfinder.position.x; // the sky does not scroll
@@ -808,7 +1034,8 @@ class Hero extends Component {
           _begin(next);
         } else {
           left = d < 0;
-          x += d.sign * min(d.abs(), walkSpeeds[game.speed] * dt);
+          // Walking into a strong wind (it blows from the right) is slower.
+          x += d.sign * min(d.abs(), walkSpeeds[game.speed] * dt * (d > 0 ? 1 - 0.45 * game.grade.wind : 1));
         }
       case Act.pet:
         if (t > 2.4) {
@@ -941,7 +1168,7 @@ class Clouds extends Component {
   void render(Canvas canvas) {
     final left = game.camera.viewfinder.position.x;
     for (final (cell, start, top, speed) in _set) {
-      final x = (start + 56 + speed * game.elapsed) % _span - 56;
+      final x = (start + 56 + speed * game.cloudClock) % _span - 56;
       canvas.drawImageRect(
         sheet,
         Rect.fromLTWH(cell * 112.0, 0, 112, 36),
@@ -1131,6 +1358,17 @@ class Hud extends Component {
         canvas.drawImageRect(sheet, src, Rect.fromLTWH(4 + i * 8.0, metersTop + m * 9, 7, 7), _paint);
       }
     }
+    // The season switch: a small square in the top right corner, debug only.
+    _paint.color = _ink;
+    canvas.drawRect(Rect.fromLTWH(game.viewW - 12, 5, 7, 7), _paint);
+    _paint.color = _cream;
+    canvas.drawRect(Rect.fromLTWH(game.viewW - 11, 6, 5, 5), _paint);
+    // The weather switch, left of it.
+    _paint.color = _ink;
+    canvas.drawRect(Rect.fromLTWH(game.viewW - 25, 5, 7, 7), _paint);
+    _paint.color = const Color(0xFF9FC4E8);
+    canvas.drawRect(Rect.fromLTWH(game.viewW - 24, 6, 5, 5), _paint);
+    _paint.color = const Color(0xFFFFFFFF);
     if (left > 0) {
       _bubble(canvas);
     }
