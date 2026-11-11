@@ -720,13 +720,21 @@ class Dog extends Component {
     final hop = happy && (since * 5).floor() % 4 == 1 ? 1.0 : 0.0;
     canvas.drawImageRect(sheet, Rect.fromLTWH(wag ? 24 : 0, 0, 24, 17), Rect.fromLTWH(dogX, bankY - 17 - hop, 24, 17), _paint);
     if (happy) {
-      // A 7x6 heart that pops up over the dog's head, rises in whole pixels, and is gone.
-      final hx = dogX + 12, hy = bankY - 26 - (since * 7).floorToDouble();
-      const rows = [(1, 2, 4, 2), (0, 7, 0, 0), (0, 7, 0, 0), (1, 5, 0, 0), (2, 3, 0, 0), (3, 1, 0, 0)];
-      for (var r = 0; r < rows.length; r++) {
-        final (a, w, b, w2) = rows[r];
-        canvas.drawRect(Rect.fromLTWH(hx + a, hy + r, w.toDouble(), 1), _heart);
-        if (w2 > 0) canvas.drawRect(Rect.fromLTWH(hx + b, hy + r, w2.toDouble(), 1), _heart);
+      // A 5x4 heart that pops up over the dog's head and rises in whole pixels. It fades the pixel-art
+      // way: whole, then every other pixel, then a single dot, then gone.
+      final hx = dogX + 13, hy = bankY - 24 - (since * 8).floorToDouble();
+      if (since > 1.3) {
+        canvas.drawRect(Rect.fromLTWH(hx + 2, hy + 1, 1, 1), _heart);
+      } else {
+        const rows = ['xx.xx', 'xxxxx', '.xxx.', '..x..'];
+        final thin = since > 0.9;
+        for (var r = 0; r < 4; r++) {
+          for (var c = 0; c < 5; c++) {
+            if (rows[r][c] == 'x' && !(thin && (r + c).isOdd)) {
+              canvas.drawRect(Rect.fromLTWH(hx + c, hy + r, 1, 1), _heart);
+            }
+          }
+        }
       }
     }
   }
@@ -742,7 +750,7 @@ class Stones extends Component {
   static Paint _flag(int index, bool afloat) => Paint()
     ..color = Color.fromARGB(255, index * 4, 0, afloat ? 255 : 0)
     ..isAntiAlias = false;
-  final _stone = _flag(34, false), _wet = _flag(34, true), _ring = _flag(63, true);
+  final _stone = _flag(6, false), _wet = _flag(6, true), _ring = _flag(63, true);
 
   // Each hop: from, to, height, duration. One stone at a time is enough for a toy.
   final _hops = <(Vector2, Vector2, double, double)>[];

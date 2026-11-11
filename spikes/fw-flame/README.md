@@ -258,3 +258,5 @@ Phone result (Pixel 7a): 60 fps, worst frame 17 ms while walking and throwing. T
 
 - **The dog answers.** When the petting ends, a small heart rises from the dog's head, and the dog keeps wagging and bobs for a moment. Without it the petting had no ending.
 - **Bigger ripples.** The stone is 2×2, each touch starts with a small splash, and the ring is a flat oval that widens in three steps (up to about 20 px across on the first touch, smaller on each skip). The water already has streaks and reflections, so a 2 px mark was lost in it.
+
+After a second look: the heart is 5×4 and fades as it rises (whole, then every other pixel, then one dot), and the stone is white so it shows against the dark water. Ripples accepted as they are.
