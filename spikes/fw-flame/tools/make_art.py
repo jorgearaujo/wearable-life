@@ -156,7 +156,7 @@ def layer(width=W):
     return img, ImageDraw.Draw(img)
 
 
-# Sky, in art pixels: flat bands and clouds. The sun and moon are their own pieces (below).
+# Sky, in art pixels: flat bands. The sun and moon are their own pieces (below).
 sky = Image.new("RGBA", (SKY_W, H * S), (0, 0, 0, 0))
 d = ImageDraw.Draw(sky)
 SKY_TOPS = [0, 112, 172, 228, 274]
@@ -172,15 +172,22 @@ for i, top in enumerate(SKY_TOPS[1:]):
             half = (x + y) % 2 == 0
             lower = quarter if row < -2 else half if row < 2 else not quarter
             sky.putpixel((x, y), far(f"sky{i + 2}" if lower else f"sky{i + 1}"))
+save(sky, "sky", native=True)
+
+# Clouds are their own pieces, one per 112x36 cell, so the game can drift each at its own pace.
+CLOUD_WIDTHS = [36, 50, 28, 24, 30]
 rs = random.Random(21)
-for cx, cy, w in [(44, 150, 36), (128, 214, 50), (196, 178, 28), (150, 118, 24), (20, 232, 30)]:
+clouds = Image.new("RGBA", (112 * len(CLOUD_WIDTHS), 36), (0, 0, 0, 0))
+d = ImageDraw.Draw(clouds)
+for n, w in enumerate(CLOUD_WIDTHS):
+    cx, cy = n * 112 + 56, 26
     d.ellipse([cx - w, cy - 5, cx + w, cy + 8], fill=far("cloud_shade"))
     for k in range(5):  # rounded tops of different heights
         px, r = cx - w + 8 + k * (2 * w - 16) // 4, rs.randint(w // 5 + 3, w // 3 + 5)
         d.ellipse([px - r, cy - r - 2, px + r, cy + r - 4], fill=far("cloud"))
         d.ellipse([px - r + 3, cy + 1, px + r - 1, cy + 6], fill=far("cloud_shade"))
     d.rectangle([cx - w + 4, cy + 6, cx + w - 4, cy + 8], fill=far("cloud_shade"))  # flat underside
-save(sky, "sky", native=True)
+save(clouds, "clouds", native=True)
 
 # Sun and moon, in art pixels, each in a 70x70 frame (35 units) so the game can move them.
 # Sun: a disc with a paler heart and two halo rings. Each ring ends in a thin checkered band, so the rings
@@ -337,9 +344,13 @@ RUST = ("coat", "tree_gold", "coat_shade")
 FLAT = ("tree_dark", None, None)  # the row behind: shapes only
 
 
+TARGET = trees  # the layer that tput, clump and rock draw on
+
+
 def tput(x, y, name):
     if 0 <= x < W * S and 0 <= y < H * S:
-        trees.putpixel((int(x), int(y)), c(name))
+        # Below the waterline only pixels marked afloat are shown; the rest is replaced by the reflection.
+        TARGET.putpixel((int(x), int(y)), (INDEX[name] * 4, 255, 255, 255) if y >= WATER * S else c(name))
 
 
 def grain(x, y, salt=0):
@@ -493,11 +504,7 @@ save(trees, "trees", native=True)
 # reflection instead, except where a pixel is marked as afloat.
 ground, d = layer()
 d.rectangle([0, BANK, W, H], fill=c("bank"))
-d.rectangle([0, BANK, W, BANK + 1], fill=c("bank_top"))
 d.rectangle([0, WATER - 4, W, H], fill=c("bank_face"))
-for _ in range(100):
-    x = random.randint(0, W - 2)
-    d.line([x, BANK - random.randint(1, 3), x, BANK], fill=c("tuft"))
 d.rectangle([50, BANK - 30, 96, BANK - 1], fill=c("wall"))
 for y in range(BANK - 26, BANK, 6):
     d.line([50, y, 96, y], fill=c("wall_shade"))
@@ -571,11 +578,6 @@ ground = scale2x(ground)
 d = ImageDraw.Draw(ground)
 rg = random.Random(9)
 B2, W2 = BANK * S, WATER * S
-for _ in range(1500):  # grass blades of mixed height along the top of the bank, none on the pebbles or the dock
-    x = rg.randint(0, SHORE * S - 24)
-    if ground.getpixel((x, B2 + 1)) in (c("bank_top"), c("bank")):
-        tall = rg.choice([1, 2, 2, 3, 3, 4, 6])
-        d.line([x, B2 - tall, x, B2], fill=c(rg.choice(["tuft", "bank_top", "bank_top", "bank"])))
 speckle(ground, (0, B2 + 4, SHORE * S, W2 - 9), c("bank"), ["bank_dark", "bank_dark", "bank_top"], 2600, 3, rg)
 speckle(ground, (0, W2 - 8, SHORE * S, W2 - 1), c("bank_face"), ["log", "wall_shade"], 900, 4, rg)
 # The cabin: a lit edge on every log, log ends at the corners, shingles, a chimney, window frame, door planks.
@@ -619,7 +621,176 @@ for left in (206, 364, 474, 502):  # thin reeds among the thick ones
         d.line([x, W2 - 1 - tall, x, W2 - 1], fill=c(rg.choice(["tree", "tuft", "tree_light"])))
 for x in range((SHORE - 10) * S, DOCK_END * S, 14):  # plank ends on the dock
     d.line([x, B2, x, B2 + 1], fill=c("log"))
+
+# Depth. The view looks slightly down on the ground: the grass carries on behind the line the character
+# walks along, up to the foot of the forest, and things stand on it at different distances. Whatever is
+# nearer than the walking line goes on a separate front layer, drawn over the character.
+BACK = B2 - 34  # the far edge of the grass
+LAND = SHORE * S  # the grass stops where the land does
+rd = random.Random(21)
+
+
+def rock(cx, base, wide, tall):
+    """A boulder with a lit top-left face, a shaded right face, a dark foot and a little moss."""
+    break_at = rd.uniform(0.45, 0.65)
+    for k in range(int(wide)):
+        t = k / max(1, wide - 1)
+        top = tall * math.sin(math.pi * (0.08 + 0.84 * t)) ** 0.55 * (1.0 if t < break_at else 0.86)
+        top += rd.choice([0, 0, 1])
+        for r in range(int(top) + 1):
+            y = base - r
+            if r <= 1:
+                name = "ash"
+            elif t > break_at + 0.12 * (r / tall) or r < tall * 0.25:
+                name = "tarp_shade"
+            else:
+                name = "tarp"
+            if r >= int(top) - 1 and t < break_at and grain(cx + k, y, 7) < 0.45:
+                name = "bank_top"  # moss
+            elif name != "ash" and grain((cx + k) // 3, y // 2, 8) < 0.1:
+                name = "tarp_shade" if name == "tarp" else "ash"
+            tput(cx - wide / 2 + k, y, name)
+
+
+def tussock(cx, base, tall, tones=("bank", "bank_top", "tuft")):
+    for k in range(-5, 6):
+        long = int(tall * (1 - abs(k) / 7) * rd.uniform(0.6, 1.0))
+        for r in range(long):
+            tput(cx + k + (k * r) // 14, base - r, tones[2] if r > long - 3 else tones[(k + r // 3) % 2])
+
+
+# The grass plane behind the walking line, composed under everything already drawn.
+plane = Image.new("RGBA", ground.size, (0, 0, 0, 0))
+TARGET = plane
+for x in range(LAND + 8):
+    back_y = BACK + int(3 * math.sin(x / 37.0) + 2 * math.sin(x / 11.0 + 1))
+    for y in range(back_y, B2 + 2):
+        depth = (y - back_y) / (B2 - back_y)  # 0 at the far edge, 1 at the walking line
+        if x > LAND - 14 + depth * 22:
+            continue  # the shore slopes away at the end of the land
+        band = depth + 0.25 * grain(x // 5, y // 2, 9)
+        tput(x, y, "bank_top" if band < 0.45 else "bank")
+    if grain(x, 0, 10) < 0.5 and x < LAND - 14:  # a ragged fringe along the far edge
+        for r in range(1 + int(4 * grain(x, 1, 10))):
+            tput(x, back_y - r, "bank_top" if grain(x, r, 11) < 0.6 else "tuft")
+plane.alpha_composite(ground)
+ground = plane
+TARGET = ground
+d = ImageDraw.Draw(ground)
+# Blades all over the plane, shorter the further away, and a worn path where the character walks.
+for _ in range(2600):
+    x, y = rd.randint(0, LAND - 30), rd.randint(BACK + 6, W2 - 10)
+    if ground.getpixel((x, y)) in (c("bank"), c("bank_top")):
+        tall = 1 + int(3 * (y - BACK) / (W2 - BACK) + rd.random() * 2)
+        d.line([x, y - tall, x, y], fill=c(rd.choice(["tuft", "bank_top", "bank_dark", "bank_dark"])))
+for _ in range(700):
+    x, y = rd.randint(0, LAND - 20), B2 + rd.randint(-1, 5)
+    if ground.getpixel((x, y)) in (c("bank"), c("bank_top"), c("bank_dark")):
+        d.line([x, y, x + rd.randint(1, 5), y], fill=c(rd.choice(["rope", "bank_face", "dog_shade"])))
+
+# The cabin gets a side: a wall and a roof slope running back to the right, both in shade.
+SIDE, RISE = 30, 14
+d.polygon([(146, B2 - 93), (99, B2 - 60), (193, B2 - 60)], fill=c("wall"))  # the gable end is logs, under the roof's edge
+for y in range(B2 - 88, B2 - 60, 6):
+    half_w = int((y - (B2 - 93)) * 47 / 33)
+    d.line([146 - half_w, y, 146 + half_w, y], fill=c("wall_shade"))
+d.line([146, B2 - 101, 88, B2 - 61], fill=c("roof_light"))
+d.polygon([(194, B2 - 60), (194 + SIDE, B2 - 60 - RISE), (194 + SIDE, B2 - RISE), (194, B2 - 1)], fill=c("wall_shade"))
+for y in range(B2 - 52, B2, 12):
+    d.line([194, y - 1, 194 + SIDE, y - 1 - RISE], fill=c("door"))
+d.rectangle([206, B2 - 46, 215, B2 - 30], fill=c("window", light=False))  # a small side window
+d.rectangle([206, B2 - 46, 215, B2 - 30], outline=c("door"))
+d.polygon([(146, B2 - 100), (146 + SIDE, B2 - 100 - RISE), (206 + SIDE, B2 - 60 - RISE), (206, B2 - 60)], fill=c("roof"))
+for k in range(0, 58, 6):  # courses of shingles down the slope
+    d.line([146 + k, B2 - 100 + k * 2 // 3, 146 + k + SIDE, B2 - 100 + k * 2 // 3 - RISE], fill=c("roof_light"))
+d.line([146, B2 - 100, 146 + SIDE, B2 - 100 - RISE], fill=c("roof_light"))  # the ridge
+d.rectangle([172, B2 - 118, 181, B2 - 92], fill=c("tarp_shade"))  # the chimney, now standing on the slope
+d.rectangle([170, B2 - 120, 183, B2 - 117], fill=c("ash"))
+d.rectangle([178, B2 - 116, 181, B2 - 92], fill=c("ash"))
+d.rectangle([112, B2 - 1, 140, B2 + 3], fill=c("wall_light"))  # a doorstep
+d.line([112, B2 + 4, 140, B2 + 4], fill=c("wall_shade"))
+for k in range(6):  # a ground shadow under the side wall
+    d.line([196 + k * 5, B2 + 1 - k * 2, 196 + SIDE + 6, B2 + 1 - k * 2], fill=c("bank_dark"))
+
+# A pool lying in the grass behind the walking line. It is painted in the water's own colour: the shader
+# mirrors only about the one straight waterline, so this pool reflects nothing.
+POND = (760, B2 - 19, 54, 8)
+for y in range(POND[1] - POND[3] - 3, POND[1] + POND[3] + 2):
+    for x in range(POND[0] - POND[2] - 2, POND[0] + POND[2] + 3):
+        wob = 3 * math.sin(x / 9.0) * (1 if y < POND[1] else 0.4)
+        u, v = (x - POND[0]) / POND[2], (y - POND[1] + wob * 0.4) / POND[3]
+        v_up = (y + 3 - POND[1] + wob * 0.4) / POND[3]
+        if u * u + v * v <= 1:
+            glint = grain(x // 5, y, 14) < 0.07 and v > -0.5
+            ground.putpixel((x, y), ((WATER_HI if glint else WATER_TINT) * 4, 0, 0, 255))
+            if u * u + v_up * v_up > 1:
+                ground.putpixel((x, y), far("bank_face"))  # the far bank's cut edge
+        elif u * u + ((y - 1 - POND[1]) / POND[3]) ** 2 <= 1 and v > 0:
+            ground.putpixel((x, y), c("bank_dark"))  # the near lip
+for x in (POND[0] - 50, POND[0] - 43, POND[0] + 38, POND[0] + 47):
+    tussock(x, POND[1] + rd.randint(-2, 6), rd.randint(9, 14), ("bank_dark", "bank", "tuft"))
+rock(POND[0] + 22, POND[1] - 5, 16, 8)
+
+# Things standing behind the walking line: boulders, bushes, tussocks and a fallen log.
+for x in range(20, LAND - 40, 1):
+    if 80 < x < 240 or 290 < x < 375 or POND[0] - 70 < x < POND[0] + 70 or rd.random() > 0.022:
+        continue
+    base = rd.randint(BACK + 8, B2 - 5)
+    kind = rd.random()
+    if kind < 0.4:
+        rock(x, base, rd.randint(14, 34), rd.randint(8, 20))
+        if rd.random() < 0.5:
+            rock(x + rd.randint(12, 20), base + 2, rd.randint(8, 14), rd.randint(5, 9))
+        tussock(x - 8, base + 2, 7)
+    elif kind < 0.75:
+        tones = rd.choice([GREEN, GREEN, GOLD, RUST])
+        for _ in range(rd.randint(2, 3)):
+            r = rd.uniform(7, 12)
+            clump(x + rd.uniform(-9, 9), base - r * 0.6, r, r * 0.8, tones)
+    else:
+        tussock(x, base, rd.randint(8, 14))
+        tussock(x + 7, base + 1, rd.randint(6, 10))
+d.rectangle([620, B2 - 16, 668, B2 - 10], fill=c("trunk"))  # a fallen log by the pebble shore
+d.line([620, B2 - 16, 668, B2 - 16], fill=c("wall_light"))
+d.line([620, B2 - 10, 668, B2 - 10], fill=c("log"))
+d.ellipse([614, B2 - 17, 623, B2 - 9], fill=c("wall_light"), outline=c("log"))
 save(ground, "ground", native=True)
+
+# The front layer: rocks and grass at the water's edge and stones standing in the shallows, nearer than
+# the character. Parts below the waterline are marked afloat, so the shader shows them, not the mirror.
+front = Image.new("RGBA", ground.size, (0, 0, 0, 0))
+TARGET = front
+x = 14
+while x < LAND - 30:
+    pebbles = 560 < x < 710
+    kind = rd.random()
+    if kind < 0.45 and not pebbles:
+        tussock(x, W2 - rd.randint(2, 9), rd.randint(9, 16))
+        tussock(x + 8, W2 - rd.randint(1, 6), rd.randint(7, 12))
+    elif kind < 0.85:
+        rock(x, W2 + rd.randint(0, 5), rd.randint(12, 30), rd.randint(7, 15))
+        if rd.random() < 0.6:
+            rock(x + rd.randint(14, 24), W2 + rd.randint(3, 9), rd.randint(8, 16), rd.randint(4, 8))
+    else:
+        tones = rd.choice([GREEN, GOLD, RUST])
+        r = rd.uniform(7, 11)
+        clump(x, W2 - r * 0.5, r, r * 0.7, tones)
+    x += rd.randint(26, 76)
+for x in (150, 470, 760, 1010, LAND + 20, LAND + 70):  # stones out in the shallows
+    rock(x, W2 + rd.randint(12, 22), rd.randint(12, 22), rd.randint(4, 7))
+# Two trees on the near edge of the bank. The character walks behind their trunks.
+for x, tall, tones in ((500, 250, GREEN), (990, 215, GOLD)):
+    base = W2 - 4
+    centre = trunk(x, base, base - tall, 13, rd.uniform(-5, 5))
+    for side, up in ((-1, 0.55), (1, 0.66), (-1, 0.8)):
+        y0 = int(base - tall * up)
+        branch(centre[y0], y0, x + side * 30, y0 - 22, "trunk", 2)
+        clump(x + side * 32, y0 - 26, 20, 13, tones)
+    for u, v, r in ((-0.7, 0.2, 22), (0.75, 0.1, 24), (-0.3, -0.25, 26), (0.35, -0.4, 24), (0, -0.75, 20), (0, 0.25, 22)):
+        clump(x + u * 42, base - tall + 14 + v * 36, r, r * 0.8, tones)
+    tussock(x - 9, base + 3, 8)
+    tussock(x + 10, base + 2, 7)
+save(front, "front", native=True)
 
 # Dormant and flourishing pieces, drawn over the same cabin and bank. World position is in main.dart.
 # A tarp over the whole cabin: 66x54, placed at (40, BANK - 53).
@@ -710,7 +881,7 @@ print("font order:", "".join(GLYPHS))
 # Character: frames of 24x30 facing right, with the same frames mirrored in a second row.
 # A hat brim, a nose, an eye, a scarf tail and a hand show which way it faces.
 #   0-1 idle, 2-5 walk, 6-7 petting (arm out, hand moving), 8 picking something up, 9 wind-up, 10 throw
-def person(d, ox, bob=0, legs="stand", arm="down", crouch=0):
+def person(d, ox, bob=0, legs="stand", arm="down", crouch=0, hat=True):
     """Drawn in half-frame units like the first version (U), then given detail in art pixels (P)."""
     ox *= S
     top = bob + crouch
@@ -726,10 +897,11 @@ def person(d, ox, bob=0, legs="stand", arm="down", crouch=0):
         U(a, 22 + crouch, b, 29, "legs")
         d.rectangle([ox + a * 2, 55, ox + b * 2 + 3, 59], fill=c("log"))  # boots, toes forward
         d.line([ox + a * 2, 44 + crouch * 2, ox + a * 2, 54], fill=c("hat"))
-    U(8, 1 + top, 15, 3 + top, "hat")
-    P(18, 0, 29, 1, "hat")  # a rounded crown
-    P(14, 8, 37, 9, "hat")  # the brim, longer in front
-    P(16, 6, 31, 7, "legs")  # hat band
+    if hat:
+        U(8, 1 + top, 15, 3 + top, "hat")
+        P(18, 0, 29, 1, "hat")  # a rounded crown
+        P(14, 8, 37, 9, "hat")  # the brim, longer in front
+        P(16, 6, 31, 7, "legs")  # hat band
     U(9, 5 + top, 14, 9 + top, "skin")
     P(18, 10, 19, 17, "log")  # hair at the back
     P(30, 14, 31, 16, "skin")  # nose
@@ -739,9 +911,13 @@ def person(d, ox, bob=0, legs="stand", arm="down", crouch=0):
     P(28, 18, 29, 19, None)  # chin
     P(18, 18, 19, 19, None)
     P(22, 17, 27, 17, "wall_light")  # shade under the cheek
-    P(16, 2, 17, 3, None)  # a rounder crown
-    P(30, 2, 31, 3, None)
-    P(18, 2, 27, 2, "legs")  # the crown's crease
+    if hat:
+        P(16, 2, 17, 3, None)  # a rounder crown
+        P(30, 2, 31, 3, None)
+        P(18, 2, 27, 2, "legs")  # the crown's crease
+    else:
+        P(18, 6, 29, 9, "log")  # a head of hair
+        P(20, 5, 27, 5, "log")
     U(7, 12 + top, 16, 21 + crouch, "coat")
     d.rectangle([ox + 14, 24 + top * 2, ox + 16, 43 + crouch * 2], fill=c("coat_shade"))
     d.rectangle([ox + 14, 42 + crouch * 2, ox + 33, 43 + crouch * 2], fill=c("coat_shade"))
@@ -755,10 +931,33 @@ def person(d, ox, bob=0, legs="stand", arm="down", crouch=0):
     P(32, 24, 33, 25, None)
     P(18, 40, 33, 41, "log")  # belt
     P(26, 40, 27, 41, "scarf")
-    if arm == "down":
+    if arm in ("down", "scratch1", "scratch2"):
         P(26, 26, 29, 39, "coat_shade")
         P(30, 26, 31, 39, "coat")
         U(15, 20 + top, 16, 21 + top, "skin")
+    if arm in ("scratch1", "scratch2"):  # hat held at the hip, the other hand in the hair
+        P(32, 38, 41, 43, "hat")
+        P(29, 44, 44, 45, "hat")
+        P(32, 42, 41, 43, "legs")
+        h = 0 if arm == "scratch1" else 1
+        U(5, 7 + top, 6, 13 + top, "coat_shade")
+        U(6 + h, 4 + top - h, 8 + h, 5 + top - h, "skin")
+    elif arm in ("up1", "up2"):  # a stretch: both arms overhead, then spread a little
+        h = 0 if arm == "up1" else 1
+        U(15 + h, 5 + top, 16 + h, 12 + top, "coat")
+        U(15 + 2 * h, 3 + top, 16 + 2 * h, 4 + top, "skin")
+        U(6 - h, 5 + top, 7 - h, 12 + top, "coat_shade")
+        U(6 - 2 * h, 3 + top, 7 - 2 * h, 4 + top, "skin")
+    elif arm in ("drink1", "drink2"):  # a bottle from the pack, raised to the mouth
+        h = 0 if arm == "drink1" else 1
+        U(15, 13 + top, 17, 14 + top, "coat")
+        U(17, 10 + top - h, 18, 13 + top, "coat")
+        U(17, 8 + top - h, 18, 9 + top - h, "skin")
+        U(15, 6 + top - h, 16 + h, 8 + top - h, "tarp")
+        U(15, 5 + top - h, 15 + h, 5 + top - h, "moon")
+    elif arm == "lace2":
+        U(18, 17 + top, 19, 22 + top, "coat")
+        U(18, 23 + top, 19, 24 + top, "skin")
     elif arm in ("pet_up", "pet_down"):
         h = -1 if arm == "pet_up" else 0
         U(15, 12 + h, 19, 13 + h, "coat")
@@ -780,6 +979,11 @@ POSES = [
     dict(legs="stride", bob=1), dict(legs="pass"), dict(legs="stride2", bob=1), dict(legs="pass"),
     dict(arm="pet_up"), dict(arm="pet_down"),
     dict(arm="pick", crouch=5), dict(arm="back", legs="stride2"), dict(arm="throw", legs="stride", bob=1),
+    # Things to do when left alone: 11-12 a stretch, 13-14 hat off and a scratch, 15-16 a drink, 17-18 a lace.
+    dict(arm="up1"), dict(arm="up2"),
+    dict(arm="scratch1", hat=False), dict(arm="scratch2", hat=False),
+    dict(arm="drink1"), dict(arm="drink2"),
+    dict(arm="pick", crouch=5, legs="pass"), dict(arm="lace2", crouch=5, legs="pass"),
 ]
 
 
@@ -797,11 +1001,13 @@ for f, pose in enumerate(POSES):
 both_ways(sheet, 48, 60, len(POSES))
 save(sheet, "character", native=True)
 
-# The dog, sitting, facing right: tail down and tail up, for wagging. 48x34 art pixels a frame, drawn
-# from rounded shapes: haunch, back, chest, head, muzzle, a hanging ear, front legs and paws.
-sheet = Image.new("RGBA", (96, 34), (0, 0, 0, 0))
+# The dog, facing right, 48x34 art pixels a frame, drawn from rounded shapes, with every frame mirrored
+# in a second row. 0-1 sitting (tail down, tail up), 2-3 sitting and scratching an ear, 4-7 walking,
+# 8-9 standing with its nose to the ground.
+DOG_FRAMES = 10
+sheet = Image.new("RGBA", (48 * DOG_FRAMES, 68), (0, 0, 0, 0))
 d = ImageDraw.Draw(sheet)
-for f in range(2):
+for f in range(4):
     ox = f * 48
 
     def E(x0, y0, x1, y1, name):
@@ -810,7 +1016,7 @@ for f in range(2):
     def P(x0, y0, x1, y1, name):
         d.rectangle([ox + x0, y0, ox + x1, y1], fill=c(name))
 
-    if f == 0:  # tail resting on the ground, or up and curled
+    if f != 1:  # tail resting on the ground, or up and curled
         P(1, 30, 9, 32, "dog_shade")
         P(1, 28, 3, 30, "dog_shade")
         P(1, 27, 2, 28, "dog")
@@ -848,6 +1054,50 @@ for f in range(2):
     P(27, 33, 37, 33, "dog_shade")
     P(26, 24, 26, 28, "dog_shade")  # chest fluff
     P(36, 20, 36, 24, "dog_shade")
+    if f >= 2:  # a hind leg up at the ear
+        k = f - 2
+        d.line([ox + 14, 24, ox + 23, 9 + k * 3], fill=c("dog"), width=3)
+        P(22, 6 + k * 3, 25, 8 + k * 3, "dog_shade")
+for f in range(4, DOG_FRAMES):
+    ox = f * 48
+
+    def E(x0, y0, x1, y1, name):
+        d.ellipse([ox + x0, y0, ox + x1, y1], fill=c(name))
+
+    def P(x0, y0, x1, y1, name):
+        d.rectangle([ox + x0, y0, ox + x1, y1], fill=c(name))
+
+    sniff = f >= 8
+    step = (f - 4) % 4
+    # Legs: the far pair in shade, the near pair light, swinging in opposite pairs.
+    swing = [(-2, 2), (0, 0), (2, -2), (0, 0)][step] if not sniff else (0, 0)
+    for base_x, sw, name in ((11, -swing[0], "dog_shade"), (29, -swing[1], "dog_shade"),
+                             (8, swing[0], "dog"), (26, swing[1], "dog")):
+        d.polygon([(ox + base_x, 22), (ox + base_x + 4, 22), (ox + base_x + 4 + sw, 32), (ox + base_x + sw, 32)], fill=c(name))
+        P(base_x + sw, 32, base_x + 5 + sw, 33, name)
+    E(5, 12, 33, 26, "dog")  # body
+    E(9, 13, 22, 24, "dog_shade")  # the patch
+    d.line([ox + 9, 13, ox + 28, 12], fill=c("moon"))  # light along the back
+    if sniff:
+        P(2, 12, 4, 20, "dog_shade")  # tail up, moving
+        P(1 + (f - 8) * 2, 9, 3 + (f - 8) * 2, 12, "dog")
+        d.polygon([(ox + 27, 13), (ox + 34, 15), (ox + 40, 26), (ox + 33, 28)], fill=c("dog"))  # neck, down
+        P(28, 15, 33, 17, "coat")  # collar
+        hx, hy = 31 + (f - 8), 20
+    else:
+        P(1, 13, 5, 15, "dog_shade")  # tail out behind
+        P(0, 11 + step % 2, 2, 13 + step % 2, "dog")
+        d.polygon([(ox + 26, 13), (ox + 33, 6), (ox + 38, 10), (ox + 34, 22)], fill=c("dog"))  # neck
+        P(29, 12, 36, 14, "coat")  # collar
+        P(32, 15, 33, 17, "scarf")
+        hx, hy = 28, 0 + step % 2
+    E(hx, hy, hx + 13, hy + 12, "dog")  # head
+    P(hx + 10, hy + 6, hx + 18, hy + 11, "dog")  # muzzle
+    P(hx + 16, hy + 6, hx + 18, hy + 8, "door")  # nose
+    P(hx + 11, hy + 11, hx + 16, hy + 11, "dog_shade")
+    P(hx + 9, hy + 3, hx + 10, hy + 5, "door")  # eye
+    d.polygon([(ox + hx + 1, hy + 2), (ox + hx + 6, hy + 1), (ox + hx + 7, hy + 9), (ox + hx + 4, hy + 13), (ox + hx + 1, hy + 11)], fill=c("dog_shade"))  # ear
+both_ways(sheet, 48, 34, DOG_FRAMES)
 save(sheet, "dog", native=True)
 
 # The campfire, in art pixels: crossed logs, then four frames of flame, 32x40 each. The first frame is

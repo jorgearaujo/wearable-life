@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 const worldW = 660.0; // five screens of 120, then open water past the end of the dock
 const walkMax = 592.0; // the end of the dock: the map runs on, so the camera can centre the character there
 const worldH = 280.0;
+
 /// Art pixels across the screen: 216 is five screen pixels per art pixel on a 1080-wide phone.
 const baseW = 216.0;
 
@@ -221,7 +222,7 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
           for (var f = 0; f < 8; f++) Sprite(moonSheet, srcPosition: Vector2(70.0 * f, 0), srcSize: Vector2.all(70)),
         ];
         moon = SpriteComponent(sprite: moonFrames[moonPhase], scale: half);
-        world.addAll([Stars(this), sun, moon]);
+        world.addAll([Stars(this), sun, moon, Clouds(this, await images.load('clouds.png'))]);
       }
     }
     final flowerSheet = await images.load('flowers.png');
@@ -239,6 +240,10 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     world.add(Props(this, await images.load('fire.png')));
     world.add(Wildlife(this, await images.load('duck.png'), await images.load('squirrel.png')));
     world.add(stones);
+    // Rocks and grass nearer than the character: drawn over it, and moving with the ground.
+    final front = SpriteComponent(sprite: await loadSprite('front.png'), scale: half);
+    layers.add((front, 1.0));
+    world.add(front);
 
     camera = CameraComponent.withFixedResolution(width: fit.viewW, height: fit.viewH, world: world);
     camera.viewfinder.anchor = Anchor.topLeft;
@@ -282,18 +287,15 @@ class SpikeGame extends FlameGame with PanDetector, TapDetector {
     } else if ((wx - firePos.x).abs() < 14 && wy > bankY - 24 && wy < bankY + 6) {
       fireLit = !fireLit;
       hud.say(fireReasons[fireLit ? 1 : 0]);
-    } else if (wx > dogX && wx < dogX + 24 && wy > bankY - 19 && wy < bankY) {
-      // Pet the dog: the character walks round to its head first. A toy; no meter changes.
-      hero.go(dogX + 28, Act.pet);
+    } else if ((wx - dog.x).abs() < 12 && wy > bankY - 19 && wy < bankY) {
+      // Pet the dog: it waits, and the character walks up to it first. A toy; no meter changes.
+      hero.petDog();
     } else if (wy > waterY + 3) {
       // Skip a stone to where the water was tapped: walk to a spot a throw away, pick one up, throw.
       final dir = wx >= hero.x ? 1.0 : -1.0;
       hero.aim = Vector2(wx.clamp(6.0, worldW - 6), wy.floorToDouble());
       hero.aimDir = dir;
-      var spot = (hero.aim.x - dir * 34).clamp(10.0, walkMax);
-      // Not on top of the dog: stand just beside it instead.
-      if (spot > dogX - 10 && spot < dogX + 34) spot = spot < dogX + 12 ? dogX - 10 : dogX + 34;
-      hero.go(spot, Act.pick);
+      hero.go((hero.aim.x - dir * 34).clamp(10.0, walkMax), Act.pick);
     } else if (vy < skyTapBottom) {
       hold = (hold + 1) % holds.length; // the sky steps the time of day and the weather
     } else {
@@ -525,10 +527,16 @@ class GradePostProcess extends PostProcess {
           final thin = 1 - (r / (rows + 1)) * (r / (rows + 1));
           final long = width * thin;
           final shift = (_hash(n, r + 50) - 0.5) * width * 0.18;
-          canvas.drawRect(Rect.fromLTWH(snap(left + (width - long) / 2 + shift), mid + r / zoom, snap(long), 1 / zoom), paint);
+          canvas.drawRect(
+            Rect.fromLTWH(snap(left + (width - long) / 2 + shift), mid + r / zoom, snap(long), 1 / zoom),
+            paint,
+          );
           // A second, shorter layer through the middle makes the heart of the wisp denser.
           if (r.abs() < rows ~/ 2) {
-            canvas.drawRect(Rect.fromLTWH(snap(left + width * 0.3 + shift), mid + r / zoom, snap(long * 0.4), 1 / zoom), paint);
+            canvas.drawRect(
+              Rect.fromLTWH(snap(left + width * 0.3 + shift), mid + r / zoom, snap(long * 0.4), 1 / zoom),
+              paint,
+            );
           }
         }
       }
@@ -713,9 +721,10 @@ class Wildlife extends Component {
 }
 
 const skyTapBottom = 110.0; // taps above this view row step the time of day
-const dogX = 125.0; // left edge of the dog's sprite
+// Left alone for this long, the character does something small. IDLE_AFTER and IDLE_FIRST are for testing.
+const idleAfter = int.fromEnvironment('IDLE_AFTER', defaultValue: 8);
 
-enum Act { idle, walk, pet, pick, wind, release }
+enum Act { idle, walk, pet, pick, wind, release, stretch, hat, drink, lace }
 
 /// The character. It always shows the action it is doing: it walks to where the action happens first.
 /// Positions are kept as fractions and drawn on whole pixels.
@@ -733,6 +742,9 @@ class Hero extends Component {
   Act act = Act.idle, next = Act.idle;
   Vector2 aim = Vector2.zero();
 
+  double still = 0; // seconds spent standing with nothing to do
+  int turn = const int.fromEnvironment('IDLE_FIRST');
+
   bool get busy => act != Act.idle;
 
   /// Walk to [to], then do [then]. A new request replaces the one in progress.
@@ -740,12 +752,41 @@ class Hero extends Component {
     target = to;
     next = then;
     act = Act.walk;
+    still = 0;
+  }
+
+  /// Walk up to the dog, on the side the character is already on, and pet it.
+  void petDog() {
+    final side = x >= game.dog.x ? 1.0 : -1.0;
+    go((game.dog.x + side * 15).clamp(4.0, walkMax + 6), Act.pet);
+  }
+
+  /// Standing still is really still. After a while the character does one small thing, a different one
+  /// each time, and goes back to standing. All of them are toys: no meter changes.
+  void _fidget() {
+    switch (turn++ % 6) {
+      case 0:
+        _begin(Act.stretch);
+      case 1:
+        _begin(Act.hat);
+      case 2:
+        _begin(Act.drink);
+      case 3:
+        _begin(Act.lace);
+      case 4: // skip a stone from where it stands
+        aimDir = left ? -1 : 1;
+        aim = Vector2((x + aimDir * 38).clamp(6.0, worldW - 6), waterY + 12);
+        _begin(Act.pick);
+      default:
+        petDog();
+    }
   }
 
   void _begin(Act a) {
     act = a;
     t = 0;
-    if (a == Act.pet) left = true; // the dog faces right; its head is to the character's left
+    still = 0;
+    if (a == Act.pet) left = x > game.dog.x; // face the dog
     if (a == Act.pick) left = aimDir < 0;
   }
 
@@ -754,7 +795,12 @@ class Hero extends Component {
     t += dt;
     switch (act) {
       case Act.idle:
-        break;
+        still += dt;
+        if (still > idleAfter && game.fingerX == null) _fidget();
+      case Act.stretch:
+        if (t > 2.0) _begin(Act.idle);
+      case Act.hat || Act.drink || Act.lace:
+        if (t > 2.6) _begin(Act.idle);
       case Act.walk:
         final d = target - x;
         if (d.abs() < 0.5) {
@@ -784,7 +830,11 @@ class Hero extends Component {
   @override
   void render(Canvas canvas) {
     final frame = switch (act) {
-      Act.idle => (game.elapsed * 2).floor() % 2,
+      Act.idle => 0,
+      Act.stretch => t < 0.4 || t > 1.7 ? 11 : 12,
+      Act.hat => t < 0.3 || t > 2.3 ? 0 : 13 + (t * 4).floor() % 2,
+      Act.drink => t < 0.5 || t > 2.1 ? 15 : 16,
+      Act.lace => 17 + (t * 3).floor() % 2,
       Act.walk => 2 + (x / 3).floor() % 4,
       Act.pet => 6 + (t * 5).floor() % 2,
       Act.pick => 8,
@@ -800,7 +850,8 @@ class Hero extends Component {
   }
 }
 
-/// The dog sits where it sat in the ground art, and wags its tail while it is being petted.
+/// The dog keeps the character company: it trots after them, staying a little behind, and sits down
+/// when they stop. Left alone it scratches an ear or sniffs the ground now and then.
 class Dog extends Component {
   Dog(this.game, this.sheet);
 
@@ -810,21 +861,94 @@ class Dog extends Component {
     ..filterQuality = FilterQuality.none
     ..isAntiAlias = false;
 
+  double x = 128; // its middle
+  bool left = true, walking = false;
+  double rested = 10; // seconds since it last moved
   double lovedAt = -10; // the heart itself is drawn by the Hud, above the colour pass, so it can fade
+
+  @override
+  void update(double dt) {
+    final hero = game.hero;
+    final d = hero.x - x;
+    // While the character is coming over to pet it, and during the petting, the dog waits and watches.
+    final waiting = hero.act == Act.pet || (hero.act == Act.walk && hero.next == Act.pet);
+    // It sets off once the character is 20 away and stops 13 short, so it trails behind and never jitters.
+    if (!waiting && d.abs() > (walking ? 13 : 20)) {
+      walking = true;
+      left = d < 0;
+      x = (x + d.sign * min(d.abs() - 13, walkSpeeds[game.speed] * dt)).clamp(10.0, walkMax);
+      rested = 0;
+    } else {
+      walking = false;
+      rested += dt;
+      if (waiting) left = d < 0;
+    }
+  }
 
   @override
   void render(Canvas canvas) {
     final since = game.elapsed - lovedAt;
     final happy = since < 1.6;
-    final wag = (game.hero.act == Act.pet || happy) && (game.elapsed * 6).floor().isOdd;
+    final petted = game.hero.act == Act.pet;
+    final own = (rested - 6) % 11; // its own small things, on a slow loop once it has sat a while
+    final int frame;
+    if (walking) {
+      frame = 4 + (x / 3).floor() % 4;
+    } else if (rested < 0.7) {
+      frame = 5; // standing, before it sits
+    } else if (petted || happy) {
+      frame = (game.elapsed * 6).floor().isOdd ? 1 : 0; // wagging
+    } else if (rested > 6 && own < 1.8) {
+      frame = 2 + (game.elapsed * 7).floor() % 2; // scratching an ear
+    } else if (rested > 6 && own > 5 && own < 7.5) {
+      frame = 8 + (game.elapsed * 3).floor() % 2; // nose to the ground
+    } else {
+      frame = 0;
+    }
     // A happy dog bobs up a pixel twice.
     final hop = happy && (since * 5).floor() % 4 == 1 ? 1.0 : 0.0;
     canvas.drawImageRect(
       sheet,
-      Rect.fromLTWH(wag ? 48 : 0, 0, 48, 34),
-      Rect.fromLTWH(dogX, bankY - 17 - hop, 24, 17),
+      Rect.fromLTWH(frame * 48.0, left ? 34 : 0, 48, 34),
+      Rect.fromLTWH(snap(x) - 12, bankY - 17 - hop, 24, 17),
       _paint,
     );
+  }
+}
+
+/// Clouds drift across the sky, each at its own slow pace, and come round again. They belong to the sky,
+/// so they do not move when the camera does. Speeds are in world units a second.
+class Clouds extends Component {
+  Clouds(this.game, this.sheet);
+
+  final SpikeGame game;
+  final ui.Image sheet;
+  final _paint = Paint()
+    ..filterQuality = FilterQuality.none
+    ..isAntiAlias = false;
+
+  // (which cloud on the sheet, where it starts across the view, top in the world, speed)
+  static const _set = [
+    (0, -6.0, 62.0, 1.0),
+    (1, 36.0, 94.0, 0.6),
+    (2, 70.0, 76.0, 1.4),
+    (3, 47.0, 46.0, 1.8),
+    (4, 120.0, 103.0, 0.8),
+  ];
+  static const _span = 190.0; // a cloud leaves on the right and comes back on the left this much later
+
+  @override
+  void render(Canvas canvas) {
+    final left = game.camera.viewfinder.position.x;
+    for (final (cell, start, top, speed) in _set) {
+      final x = (start + 56 + speed * game.elapsed) % _span - 56;
+      canvas.drawImageRect(
+        sheet,
+        Rect.fromLTWH(cell * 112.0, 0, 112, 36),
+        Rect.fromLTWH(left + snap(x), top, 56, 18),
+        _paint,
+      );
+    }
   }
 }
 
@@ -983,7 +1107,7 @@ class Hud extends Component {
     final paint = Paint()
       ..color = const Color(0xFFEE8096).withValues(alpha: fade)
       ..isAntiAlias = false;
-    final hx = dogX + 13 - snap(game.camLeft);
+    final hx = snap(game.dog.x) - 2 - snap(game.camLeft);
     final hy = bankY - 24 - (since * 8).floorToDouble() - game.fit.viewTop;
     const rows = ['xx.xx', 'xxxxx', '.xxx.', '..x..'];
     for (var r = 0; r < 4; r++) {

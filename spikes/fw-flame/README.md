@@ -376,3 +376,39 @@ A second pass the same day, after looking at every state on the emulator:
 **Limits, all placeholder shortcuts:** the duck, squirrel, tarp and flowers are the old drawings doubled with Scale2x; the meters and the sentence bubble are still in whole units (2-pixel blocks); the big tree on the bank, the boulders and the firelight rings are untouched.
 
 **Evidence:** emulator, release build: day, dusk and rain render correctly, the mirror, walking and taps work; 10 fps there (the emulator did 8 to 10 at the previous 216 view, so no change). No Pixel 7a figure yet.
+
+## Depth in the ground (2026-11-11)
+
+Question: the map read as flat. Can the ground look as if the camera is tilted slightly down onto it, with things behind and in front of the character, while the character still only walks left and right?
+
+Answer: yes, in the art alone, with one new layer and no change to movement or the shader.
+
+- The grass no longer ends at the line the character walks on. It carries on 17 units behind it, lighter far away and darker near, with a ragged far edge at the foot of the forest. The lit ledge along the walking line is gone; a patchy worn path marks it instead.
+- Boulders, bushes, tussocks and a fallen log stand on that grass at different distances, so the character walks in front of them.
+- The cabin has a side: a shaded wall with a small window and a roof slope running back to the right. The gable end is logs under the roof's edge.
+- A new `front.png` layer is drawn over the character: grass, bushes and rocks at the water's edge, and stones standing in the shallows. Its pixels below the waterline carry the "afloat" mark, so the shader shows them instead of the mirror.
+- One pool lies in the grass behind the walking line. It is painted in the water's colour and reflects nothing: the shader mirrors about one straight waterline only.
+
+Limits:
+
+- Props are placed by a seeded random walk, kept clear of the cabin, the campfire and the pool only. Nothing keeps them off the dog's spot or the big tree.
+- The front layer hides the character's feet in places. Nothing was tuned for how often.
+- A pool that reflects, or an inlet joined to the lake, needs a mask in the shader for where water is. Not tried.
+- Checked in the emulator by day near the campfire and by night near the cabin. The rest of the map, rain, fog and dusk were seen only in the Python preview or not at all. No frame rate was measured on the phone; the extra layer is one more full-size sprite.
+
+## A tree in front, drifting clouds, a still character and a dog that follows (2026-11-11)
+
+Four questions from the owner's look at the depth build.
+
+- **Can the character pass behind something?** Yes. Two trees stand on the near edge of the bank, on the front layer; the character and the dog walk behind their trunks. No code beyond the front layer that was already there.
+- **Can clouds move as their own pieces under the palette shader?** Yes. The clouds came off the sky image onto a sheet of five (`clouds.png`); the game drifts each at its own pace (0.6 to 1.8 units a second), in whole art pixels, and brings it round again. They sit between the sun and the hills, so they pass in front of the sun and moon and behind the ridge, are recoloured with the time of day, and are mirrored in the water with no extra work.
+- **A still character.** Standing no longer bobs. After 8 seconds left alone the character does one small thing and stands again, a different one each time: a stretch, hat off and a scratch of the head, a drink from a bottle, a shoelace, a skipped stone, petting the dog. Any tap or hold cancels it. All of them are toys and change no meter.
+- **A dog that follows.** The dog sets off when the character is 20 units away and stops 13 short, so it trails behind and sits when the character stops. Left alone it scratches an ear or sniffs the ground on a slow loop. To be petted it waits where it is and the character walks up to it.
+
+Limits:
+
+- Every new pose is a quick placeholder: two frames each, the dog's walk is four frames of swinging legs, the ear scratch barely reads.
+- The dog stops at the same places the character can reach, and is not kept off the campfire.
+- The clouds do not thicken or change in rain or fog; in rain they keep drifting as they are.
+- Checked in the emulator by day: five of the six idle acts, the dog following and sitting, a walk behind the first front tree, clouds drifting. Not checked: the idle stone throw, night, rain, the second front tree, the dock. No frame rate measured on the phone.
+- `--dart-define=IDLE_AFTER=1` shortens the wait and `IDLE_FIRST=n` picks which act comes first, for testing.
