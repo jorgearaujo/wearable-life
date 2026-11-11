@@ -233,4 +233,5 @@ Limits:
 - Placeholder art drawn as text grids in `tools/make_art.py`; real animals want more frames and an artist's hand.
 - The duck has no reflection of its own and does not react to rain rings or to the character.
 - The squirrel does not avoid the fire or the dog, and has no shadow.
-- Phone cost: see the commit that records it.
+- Phone cost on the Pixel 7a: 60 fps, worst frame 17 ms, the same as before the stars, the animals and the extra texture read.
+- The dithered band edges are not settled: the project owner is unsure about them. The sky is left as it is in this spike; how the real sky is painted (band shapes, clouds as their own pieces) is an art decision for when art direction starts.
